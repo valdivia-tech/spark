@@ -1,0 +1,14 @@
+[project]
+name = "spark"
+version = "0.1.0"
+description = "Agente de código eléctrico para DIgSILENT PowerFactory"
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=1.0.0",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.124.0",
+    "uvicorn>=0.38.0",
+]

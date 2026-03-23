@@ -7,8 +7,15 @@ dependencies = [
     "google-genai>=1.0.0",
 ]
 
+[project.scripts]
+spark = "spark:main"
+
 [project.optional-dependencies]
 server = [
     "fastapi>=0.124.0",
     "uvicorn>=0.38.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -3,24 +3,24 @@
 Spark CLI — agente de código eléctrico para DIgSILENT PowerFactory.
 
 Uso:
-    python spark.py "corre un flujo de potencia en BD_2030.pfd"
-    python spark.py --interactive
-    echo "lista las barras de 110kV" | python spark.py
+    uv run spark "corre un flujo de potencia en BD_2030.pfd"
+    uv run spark -i
 """
 
 import sys
-import os
 from pathlib import Path
 
-from config import WORKSPACE
+from config import load_dotenv
 
 
 def main():
-    # Crear workspace si no existe
+    load_dotenv()
+
+    from config import WORKSPACE
     Path(WORKSPACE).mkdir(parents=True, exist_ok=True)
 
     # Modo interactivo
-    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
+    if len(sys.argv) > 1 and sys.argv[1] in ("-i", "--interactive"):
         interactive_mode()
         return
 
@@ -44,23 +44,21 @@ def main():
 
 
 def interactive_mode():
-    """Loop interactivo — escribís instrucciones, Spark las ejecuta."""
     from agent import run
 
-    print("⚡ Spark — agente de código eléctrico")
-    print("   Escribí una instrucción o 'salir' para terminar.\n")
+    print("Spark — agente de codigo electrico")
+    print("Escribi una instruccion o 'q' para salir.\n")
 
     while True:
         try:
             prompt = input("spark> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nChao.")
+            print()
             break
 
         if not prompt:
             continue
-        if prompt.lower() in ("salir", "exit", "quit", "q"):
-            print("Chao.")
+        if prompt.lower() in ("q", "quit", "exit", "salir"):
             break
 
         run(prompt)

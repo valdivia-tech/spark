@@ -5,12 +5,36 @@ Spark Agent — loop ReAct con Gemini + herramientas de bash/archivos.
 import subprocess
 import os
 import json
+import time
 from pathlib import Path
+from dataclasses import dataclass, asdict
 from google import genai
 from google.genai import types
 
 from config import GOOGLE_API_KEY, GEMINI_MODEL, MAX_TURNS, WORKSPACE
 from prompts.system import SYSTEM_PROMPT
+
+
+# --- Pricing per million tokens ---
+
+MODEL_PRICING = {
+    "gemini-3.1-flash-lite-preview": {"input": 0.25, "output": 1.50},
+    "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-3-flash-preview": {"input": 0.30, "output": 2.50},
+}
+
+DEFAULT_PRICING = {"input": 0.30, "output": 2.50}
+
+
+@dataclass
+class RunStats:
+    model: str
+    turns: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost_usd: float
+    duration_seconds: float
 
 
 # --- Tool implementations ---
@@ -132,6 +156,23 @@ TOOL_DECLARATIONS = types.Tool(
 
 # --- Agent loop ---
 
+def _extract_usage(response) -> tuple[int, int]:
+    """Extrae input/output tokens de una respuesta de Gemini."""
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return 0, 0
+    return (
+        getattr(usage, "prompt_token_count", 0) or 0,
+        getattr(usage, "candidates_token_count", 0) or 0,
+    )
+
+
+def _calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Calcula costo en USD."""
+    pricing = MODEL_PRICING.get(model, DEFAULT_PRICING)
+    return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
+
+
 def run(prompt: str, verbose: bool = True) -> str:
     """
     Ejecuta el agente Spark con un prompt.
@@ -155,10 +196,17 @@ def run(prompt: str, verbose: bool = True) -> str:
 
     if verbose:
         print(f"\n{'='*60}")
-        print(f"⚡ Spark — {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
+        print(f"Spark — {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
         print(f"{'='*60}\n")
 
+    start_time = time.time()
+    total_input_tokens = 0
+    total_output_tokens = 0
+
     response = chat.send_message(prompt)
+    inp, out = _extract_usage(response)
+    total_input_tokens += inp
+    total_output_tokens += out
     turns = 0
 
     while turns < MAX_TURNS:
@@ -180,15 +228,13 @@ def run(prompt: str, verbose: bool = True) -> str:
             result = dispatch_tool(fc.name, args)
 
             if verbose:
-                # Mostrar qué hizo
                 if fc.name == "execute_bash":
                     print(f"  $ {args.get('command', '')}")
                 elif fc.name == "write_file":
-                    print(f"  write → {args.get('path', '')}")
+                    print(f"  write -> {args.get('path', '')}")
                 elif fc.name == "read_file":
-                    print(f"  read ← {args.get('path', '')}")
+                    print(f"  read <- {args.get('path', '')}")
 
-                # Mostrar resultado (truncado)
                 result_preview = result[:200] + "..." if len(result) > 200 else result
                 print(f"    {result_preview}\n")
 
@@ -201,6 +247,9 @@ def run(prompt: str, verbose: bool = True) -> str:
 
         # Enviar resultados al modelo
         response = chat.send_message(tool_responses)
+        inp, out = _extract_usage(response)
+        total_input_tokens += inp
+        total_output_tokens += out
         turns += 1
 
     # Extraer texto final
@@ -210,9 +259,30 @@ def run(prompt: str, verbose: bool = True) -> str:
             if part.text:
                 final_text += part.text
 
+    duration = time.time() - start_time
+    total_tokens = total_input_tokens + total_output_tokens
+    cost = _calculate_cost(GEMINI_MODEL, total_input_tokens, total_output_tokens)
+
+    stats = RunStats(
+        model=GEMINI_MODEL,
+        turns=turns,
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
+        total_tokens=total_tokens,
+        cost_usd=cost,
+        duration_seconds=round(duration, 2),
+    )
+
+    # Guardar stats en results/
+    stats_path = Path(WORKSPACE) / "results" / "_last_run_stats.json"
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+    stats_path.write_text(json.dumps(asdict(stats), indent=2))
+
     if verbose:
         print(f"\n{'='*60}")
-        print(f"✓ Spark completó en {turns} turns")
+        print(f"Spark completó en {turns} turns | {duration:.1f}s")
+        print(f"Tokens: {total_input_tokens:,} in + {total_output_tokens:,} out = {total_tokens:,} total")
+        print(f"Costo: ${cost:.6f} USD")
         print(f"{'='*60}\n")
         print(final_text)
 

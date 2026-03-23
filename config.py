@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
 MAX_TURNS = int(os.getenv("MAX_TURNS", "30"))
 WORKSPACE = os.getenv("SPARK_WORKSPACE", "./workspace")
 
@@ -25,6 +25,6 @@ def load_dotenv():
     # Recargar config después de leer .env
     global GOOGLE_API_KEY, GEMINI_MODEL, MAX_TURNS, WORKSPACE
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
     MAX_TURNS = int(os.getenv("MAX_TURNS", "30"))
     WORKSPACE = os.getenv("SPARK_WORKSPACE", "./workspace")

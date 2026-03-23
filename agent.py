@@ -12,7 +12,8 @@ from google import genai
 from google.genai import types
 
 from config import GOOGLE_API_KEY, GEMINI_MODEL, MAX_TURNS, WORKSPACE
-from prompts.system import SYSTEM_PROMPT
+
+SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
 
 # --- Pricing per million tokens ---

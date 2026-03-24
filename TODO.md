@@ -7,7 +7,7 @@
 
 ## Medium Priority (after first real use on VM)
 
-- [ ] **Self-improving references (Voyager pattern)** — When a PowerFactory script works, save it to `prompts/learned/` with a semantic description. Before writing new scripts, search learned patterns by similarity. Based on Voyager (NVIDIA) skill library approach. See also: Reflexion (save verbal reflections after failures), ExpeL (extract insights from success/failure pairs).
+- [x] **Self-improving references (Voyager + ExpeL hybrid)** — After a successful task, Spark saves the experience (lessons learned + working script) to `prompts/learned/`. Before new tasks, reads the index and relevant experiences. Combines Voyager (verified code), ExpeL (distilled lessons from success/failure), and MemGPT (agent-managed memory). Future: embedding-based retrieval when library grows past ~50 entries.
 - [ ] **Pipeline mode** — Read a CES (PDF), decompose into tasks, execute sequentially (Phase B architecture from design session).
 - [ ] **Report generation** — Compile results from multiple simulation runs into a formatted report (docx/pdf).
 

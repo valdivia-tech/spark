@@ -72,6 +72,12 @@ TOOL_DECLARATIONS = types.Tool(function_declarations=[
 
 def _execute_bash(command: str, workspace: str) -> str:
     try:
+        # Strip comment lines — # is not valid in Windows cmd.exe
+        lines = command.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("#")]
+        command = "\n".join(lines).strip()
+        if not command:
+            return "error: empty command after stripping comments"
         r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=300, cwd=workspace)
         parts = []
         if r.stdout:

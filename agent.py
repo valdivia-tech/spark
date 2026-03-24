@@ -18,7 +18,18 @@ import config
 log = logging.getLogger("spark")
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-SYSTEM_PROMPT = (PROMPTS_DIR / "system.md").read_text(encoding="utf-8")
+LEARNED_DIR = PROMPTS_DIR / "learned"
+
+def _build_system_prompt() -> str:
+    """Build system prompt with learned experiences index injected."""
+    base = (PROMPTS_DIR / "system.md").read_text(encoding="utf-8")
+    index_file = LEARNED_DIR / "index.md"
+    if index_file.exists():
+        index = index_file.read_text(encoding="utf-8")
+        base += f"\n\n## Available experiences\n\n{index}\n\nRead the relevant files with read_file before writing your script."
+    return base
+
+SYSTEM_PROMPT = _build_system_prompt()
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [2, 5, 10]  # seconds

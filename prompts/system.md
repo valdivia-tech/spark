@@ -18,13 +18,12 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
-- BEFORE writing any PowerFactory script, you MUST first:
-  1. Read `../prompts/powerfactory.md` — the API reference. Do NOT guess PowerFactory API calls.
-  2. Read `../prompts/learned/index.md` — past experiences. If any are relevant, read them too. This avoids repeating past mistakes and saves turns.
+- BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional.
+- The "Available experiences" section at the end of this prompt lists past experiences. If any are relevant to your current task, read them with read_file BEFORE writing your script. They contain lessons and working code that will save you turns.
 
 ## Learning from experience
 
-You have a skill library in `../prompts/learned/`. It contains past experiences with lessons and working scripts.
+You have a skill library in `../prompts/learned/`. Past experiences are listed at the end of this prompt.
 
 ### After a task succeeds — save ONLY if you learned something new
 

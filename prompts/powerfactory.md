@@ -2,6 +2,9 @@
 
 Use these patterns when writing scripts for DIgSILENT PowerFactory.
 
+IMPORTANT: Each script runs as a separate process. Nothing persists between scripts.
+Every script that needs PowerFactory MUST do initialization + project loading from scratch.
+
 ## Initialization
 
 ```python
@@ -19,10 +22,15 @@ import powerfactory
 try:
     app = powerfactory.GetApplication()
 except:
-    app = powerfactory.GetApplicationExt(None, None, '/min /nologo')
+    app = powerfactory.GetApplicationExt(None, None)
 ```
 
+NOTE: Do NOT pass '/min /nologo' to GetApplicationExt — PowerFactory 2026 does not support those flags.
+
 ## Load a .pfd project
+
+IMPORTANT: ActivateProject() takes a STRING (project name), NOT an object.
+Use project.Activate() if you have the object, or app.ActivateProject("name_string").
 
 ```python
 user = app.GetCurrentUser()
@@ -37,16 +45,20 @@ import_obj.Delete()
 projects_after = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
 new_projects = projects_after - projects_before
 project_name = list(new_projects)[0]
-app.ActivateProject(project_name)
+app.ActivateProject(project_name)  # pass the NAME string, not the object
 ```
 
 ## Power flow
 
+NOTE: Study cases may be nested inside IntFolder objects. Use recursive search with GetContents("*.IntCase", 1)
+where the second argument 1 means recursive search.
+
 ```python
 study_case = app.GetActiveStudyCase()
 if study_case is None:
-    study_cases = app.GetActiveProject().GetContents("*.IntCase", 1)
-    study_cases[0].Activate()
+    study_cases = app.GetActiveProject().GetContents("*.IntCase", 1)  # 1 = recursive
+    if study_cases:
+        study_cases[0].Activate()
 
 ldf = app.GetFromStudyCase("ComLdf")
 ldf.iopt_net = 0      # AC load flow

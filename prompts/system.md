@@ -18,23 +18,22 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
-- BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional. The reference contains the exact initialization, project loading, and API patterns you need. Do NOT guess PowerFactory API calls.
+- BEFORE writing any PowerFactory script, you MUST first:
+  1. Read `../prompts/powerfactory.md` — the API reference. Do NOT guess PowerFactory API calls.
+  2. Read `../prompts/learned/index.md` — past experiences. If any are relevant, read them too. This avoids repeating past mistakes and saves turns.
 
 ## Learning from experience
 
-You have a skill library in `../prompts/learned/`. It contains past experiences: what worked, what failed, and lessons learned.
+You have a skill library in `../prompts/learned/`. It contains past experiences with lessons and working scripts.
 
-### Before writing a script
+### After a task succeeds — save ONLY if you learned something new
 
-1. Read `../prompts/learned/index.md` to see available experiences
-2. If any seem relevant to your current task, read them for context
-3. Use the lessons and patterns — don't repeat past mistakes
+Ask yourself: "Did something surprise me? Did I hit an error I had to debug? Did I discover something not in the references?"
 
-### After a script succeeds
+- If YES → save the experience to `../prompts/learned/{slug}.md` and update `index.md`
+- If NO (task was straightforward, used existing patterns) → do NOT save. No noise.
 
-When a task completes successfully, save your experience:
-
-1. Write a file to `../prompts/learned/{descriptive-slug}.md` with this format:
+When saving, use this format:
 
 ```
 # {Task title}
@@ -42,9 +41,8 @@ Fecha: {YYYY-MM-DD}
 Tarea: "{original user prompt}"
 
 ## Lecciones aprendidas
-- {What surprised you or what you had to fix}
-- {Key decisions and WHY they worked}
-- {Gotchas or non-obvious details}
+- {Only genuinely surprising or non-obvious findings}
+- {What you had to debug and WHY the fix worked}
 
 ## Script
 \```python
@@ -52,6 +50,4 @@ Tarea: "{original user prompt}"
 \```
 ```
 
-2. Update `../prompts/learned/index.md` — add one line describing the new experience.
-
-Focus the lessons on **WHY** things worked or failed, not just WHAT you did. The reasoning is more valuable than the code — it transfers to future tasks.
+The lessons must be **specific and non-obvious**. "Check file paths" is useless. "The .pfd filename differs from the internal project name — use before/after set comparison" is useful.

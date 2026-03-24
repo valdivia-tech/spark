@@ -6,16 +6,22 @@ import json
 import time
 import uuid
 import base64
+import logging
 from pathlib import Path
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from google import genai
 from google.genai import types
 
 import config
 
+log = logging.getLogger("spark")
+
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (PROMPTS_DIR / "system.md").read_text(encoding="utf-8")
+
+MAX_RETRIES = 3
+RETRY_DELAYS = [2, 5, 10]  # seconds
 
 # Pricing per million tokens
 MODEL_PRICING = {
@@ -140,6 +146,25 @@ def _get_text(response) -> str:
     return "".join(p.text for p in response.candidates[0].content.parts if p.text)
 
 
+def _send_with_retry(chat, message, verbose: bool = False):
+    """Send a message to Gemini with automatic retry on transient errors."""
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            return chat.send_message(message)
+        except Exception as e:
+            error_str = str(e).lower()
+            is_transient = any(k in error_str for k in ("429", "500", "503", "overloaded", "rate", "unavailable", "deadline", "timeout"))
+
+            if not is_transient or attempt == MAX_RETRIES:
+                raise
+
+            delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]
+            if verbose:
+                print(f"  [retry {attempt + 1}/{MAX_RETRIES}] {type(e).__name__} — waiting {delay}s...")
+            log.warning("Transient error (attempt %d/%d): %s. Retrying in %ds...", attempt + 1, MAX_RETRIES, e, delay)
+            time.sleep(delay)
+
+
 # --- Session ---
 
 SESSIONS_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")) / "sessions"
@@ -232,7 +257,7 @@ class Session:
         start = time.time()
         run_in, run_out = 0, 0
 
-        response = self.chat.send_message(prompt)
+        response = _send_with_retry(self.chat, prompt, verbose)
         inp, out = _extract_usage(response)
         run_in += inp
         run_out += out
@@ -260,7 +285,7 @@ class Session:
                     types.Part.from_function_response(name=fc.name, response={"result": result})
                 )
 
-            response = self.chat.send_message(tool_responses)
+            response = _send_with_retry(self.chat, tool_responses, verbose)
             inp, out = _extract_usage(response)
             run_in += inp
             run_out += out

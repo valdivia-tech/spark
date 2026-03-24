@@ -183,6 +183,7 @@ class Session:
         self.model = config.get("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
         self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
         self.max_turns = int(config.get("MAX_TURNS", "30"))
+        self.max_cost_usd = float(config.get("MAX_COST_USD", "0.50"))
 
         self.client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
         self.total_in = 0
@@ -270,6 +271,13 @@ class Session:
         turns = 0
 
         while turns < self.max_turns:
+            # Check cost limit
+            run_cost_so_far = _calculate_cost(self.model, run_in, run_out)
+            if run_cost_so_far >= self.max_cost_usd:
+                if verbose:
+                    print(f"\n  [STOPPED] Cost limit reached: ${run_cost_so_far:.4f} >= ${self.max_cost_usd:.2f}")
+                break
+
             calls = _get_function_calls(response)
             if not calls:
                 break

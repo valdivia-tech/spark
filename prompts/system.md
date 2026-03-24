@@ -18,4 +18,4 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
-- BEFORE writing any PowerFactory script, you MUST read `prompts/powerfactory.md` using read_file. This is NOT optional. The reference contains the exact initialization, project loading, and API patterns you need. Do NOT guess PowerFactory API calls.
+- BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional. The reference contains the exact initialization, project loading, and API patterns you need. Do NOT guess PowerFactory API calls.

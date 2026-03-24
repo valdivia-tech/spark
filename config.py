@@ -1,15 +1,12 @@
 import os
 from pathlib import Path
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
-MAX_TURNS = int(os.getenv("MAX_TURNS", "30"))
-WORKSPACE = os.getenv("SPARK_WORKSPACE", "./workspace")
+_ROOT = Path(__file__).parent
 
 
 def load_dotenv():
-    """Carga variables de .env si existe (sin dependencias externas)."""
-    env_file = Path(__file__).parent / ".env"
+    """Load .env file if it exists (no external dependencies)."""
+    env_file = _ROOT / ".env"
     if not env_file.exists():
         return
     for line in env_file.read_text().splitlines():
@@ -18,13 +15,10 @@ def load_dotenv():
             continue
         key, _, value = line.partition("=")
         key, value = key.strip(), value.strip()
-        if value and value[0] == value[-1] and value[0] in ('"', "'"):
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
             value = value[1:-1]
         os.environ.setdefault(key, value)
 
-    # Recargar config después de leer .env
-    global GOOGLE_API_KEY, GEMINI_MODEL, MAX_TURNS, WORKSPACE
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
-    MAX_TURNS = int(os.getenv("MAX_TURNS", "30"))
-    WORKSPACE = os.getenv("SPARK_WORKSPACE", "./workspace")
+
+def get(key: str, default: str = "") -> str:
+    return os.getenv(key, default)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Spark CLI — agente de código eléctrico para DIgSILENT PowerFactory.
+Spark CLI — coding agent for DIgSILENT PowerFactory.
 
-Uso:
-    uv run spark "corre un flujo de potencia en BD_2030.pfd"
+Usage:
+    uv run spark "run a power flow on BD_2030.pfd"
     uv run spark -i
 """
 
@@ -16,22 +16,18 @@ from config import load_dotenv
 def main():
     load_dotenv()
 
-    from config import WORKSPACE
-    Path(WORKSPACE).mkdir(parents=True, exist_ok=True)
+    from config import get
+    Path(get("SPARK_WORKSPACE", "./workspace")).mkdir(parents=True, exist_ok=True)
 
-    # Modo interactivo
     if len(sys.argv) > 1 and sys.argv[1] in ("-i", "--interactive"):
-        interactive_mode()
+        _interactive()
         return
 
-    # Prompt desde argumentos
     if len(sys.argv) > 1:
-        prompt = " ".join(sys.argv[1:])
         from agent import run
-        run(prompt)
+        run(" ".join(sys.argv[1:]))
         return
 
-    # Prompt desde stdin
     if not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
         if prompt:
@@ -39,15 +35,14 @@ def main():
             run(prompt)
             return
 
-    # Sin argumentos: modo interactivo
-    interactive_mode()
+    _interactive()
 
 
-def interactive_mode():
+def _interactive():
     from agent import run
 
-    print("Spark — agente de codigo electrico")
-    print("Escribi una instruccion o 'q' para salir.\n")
+    print("Spark — coding agent for electrical power systems")
+    print("Type an instruction or 'q' to quit.\n")
 
     while True:
         try:
@@ -58,7 +53,7 @@ def interactive_mode():
 
         if not prompt:
             continue
-        if prompt.lower() in ("q", "quit", "exit", "salir"):
+        if prompt.lower() in ("q", "quit", "exit"):
             break
 
         run(prompt)

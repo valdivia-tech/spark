@@ -4,8 +4,11 @@ import subprocess
 import os
 import json
 import time
+import uuid
+import base64
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timezone
 from google import genai
 from google.genai import types
 
@@ -36,16 +39,12 @@ class RunStats:
 # --- Tools ---
 
 def _tool(name: str, description: str, params: dict) -> types.FunctionDeclaration:
-    """Helper to declare a tool with less boilerplate."""
     return types.FunctionDeclaration(
         name=name,
         description=description,
         parameters=types.Schema(
             type="OBJECT",
-            properties={
-                k: types.Schema(type="STRING", description=v)
-                for k, v in params.items()
-            },
+            properties={k: types.Schema(type="STRING", description=v) for k, v in params.items()},
             required=list(params.keys()),
         ),
     )
@@ -109,7 +108,7 @@ def _dispatch(name: str, args: dict, workspace: str) -> str:
     return f"error: unknown tool '{name}'"
 
 
-# --- Agent loop ---
+# --- Helpers ---
 
 def _extract_usage(response) -> tuple[int, int]:
     usage = getattr(response, "usage_metadata", None)
@@ -141,85 +140,170 @@ def _get_text(response) -> str:
     return "".join(p.text for p in response.candidates[0].content.parts if p.text)
 
 
-def run(prompt: str, verbose: bool = True) -> str:
-    """Run the Spark agent with a prompt. Returns the final text response."""
-    model = config.get("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
-    workspace = config.get("SPARK_WORKSPACE", "./workspace")
-    max_turns = int(config.get("MAX_TURNS", "30"))
+# --- Session ---
 
-    client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
-    chat = client.chats.create(
-        model=model,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            tools=[TOOL_DECLARATIONS],
-        ),
-    )
+SESSIONS_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")) / "sessions"
 
-    if verbose:
-        print(f"\n{'='*60}")
-        print(f"Spark — {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
-        print(f"{'='*60}\n")
 
-    start = time.time()
-    total_in, total_out = 0, 0
+class Session:
+    """A persistent agent session. Maintains chat history across multiple prompts."""
 
-    response = chat.send_message(prompt)
-    inp, out = _extract_usage(response)
-    total_in += inp
-    total_out += out
-    turns = 0
+    def __init__(self, session_id: str | None = None):
+        self.model = config.get("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
+        self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
+        self.max_turns = int(config.get("MAX_TURNS", "30"))
 
-    while turns < max_turns:
-        calls = _get_function_calls(response)
-        if not calls:
-            break
+        self.client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
+        self.total_in = 0
+        self.total_out = 0
+        self.total_turns = 0
+        self.total_cost = 0.0
 
-        tool_responses = []
-        for fc in calls:
-            args = dict(fc.args) if fc.args else {}
-            result = _dispatch(fc.name, args, workspace)
-
-            if verbose:
-                label = {"execute_bash": f"  $ {args.get('command', '')}",
-                         "write_file": f"  write -> {args.get('path', '')}",
-                         "read_file": f"  read <- {args.get('path', '')}"}
-                print(label.get(fc.name, f"  {fc.name}"))
-                preview = result[:200] + "..." if len(result) > 200 else result
-                print(f"    {preview}\n")
-
-            tool_responses.append(
-                types.Part.from_function_response(name=fc.name, response={"result": result})
+        # Load existing session or create new one
+        if session_id and self._session_file(session_id).exists():
+            self.session_id = session_id
+            history = self._load_history()
+            self.chat = self.client.chats.create(
+                model=self.model,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    tools=[TOOL_DECLARATIONS],
+                ),
+                history=history,
+            )
+            saved = json.loads(self._session_file(session_id).read_text())
+            self.total_in = saved.get("total_input_tokens", 0)
+            self.total_out = saved.get("total_output_tokens", 0)
+            self.total_turns = saved.get("total_turns", 0)
+            self.total_cost = saved.get("total_cost_usd", 0.0)
+        else:
+            self.session_id = session_id or uuid.uuid4().hex[:8]
+            self.chat = self.client.chats.create(
+                model=self.model,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    tools=[TOOL_DECLARATIONS],
+                ),
             )
 
-        response = chat.send_message(tool_responses)
+    def _session_file(self, sid: str) -> Path:
+        return SESSIONS_DIR / f"{sid}.json"
+
+    def _load_history(self) -> list[types.Content]:
+        data = json.loads(self._session_file(self.session_id).read_text())
+        entries = data.get("history", [])
+        for d in entries:
+            for part in d.get("parts", []):
+                if part.pop("_sig_b64", False):
+                    part["thought_signature"] = base64.b64decode(part["thought_signature"])
+        return [types.Content(**entry) for entry in entries]
+
+    def _save(self):
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        history_dicts = []
+        for content in self.chat._curated_history:
+            d = content.model_dump(exclude_none=True)
+            for part in d.get("parts", []):
+                sig = part.get("thought_signature")
+                if isinstance(sig, bytes):
+                    part["thought_signature"] = base64.b64encode(sig).decode("ascii")
+                    part["_sig_b64"] = True
+            history_dicts.append(d)
+
+        data = {
+            "session_id": self.session_id,
+            "model": self.model,
+            "created": datetime.now(timezone.utc).isoformat(),
+            "total_turns": self.total_turns,
+            "total_input_tokens": self.total_in,
+            "total_output_tokens": self.total_out,
+            "total_cost_usd": round(self.total_cost, 6),
+            "history": history_dicts,
+        }
+        self._session_file(self.session_id).write_text(json.dumps(data, indent=2, default=str))
+
+    def run(self, prompt: str, verbose: bool = True) -> str:
+        """Send a prompt to the agent. Chat history persists between calls."""
+        if verbose:
+            print(f"\n{'='*60}")
+            print(f"Spark [{self.session_id}] — {prompt[:70]}{'...' if len(prompt) > 70 else ''}")
+            print(f"{'='*60}\n")
+
+        start = time.time()
+        run_in, run_out = 0, 0
+
+        response = self.chat.send_message(prompt)
         inp, out = _extract_usage(response)
-        total_in += inp
-        total_out += out
-        turns += 1
+        run_in += inp
+        run_out += out
+        turns = 0
 
-    final_text = _get_text(response)
-    duration = time.time() - start
-    total_tokens = total_in + total_out
-    cost = _calculate_cost(model, total_in, total_out)
+        while turns < self.max_turns:
+            calls = _get_function_calls(response)
+            if not calls:
+                break
 
-    stats = RunStats(
-        model=model, turns=turns,
-        input_tokens=total_in, output_tokens=total_out,
-        total_tokens=total_tokens, cost_usd=cost,
-        duration_seconds=round(duration, 2),
-    )
+            tool_responses = []
+            for fc in calls:
+                args = dict(fc.args) if fc.args else {}
+                result = _dispatch(fc.name, args, self.workspace)
 
-    stats_path = Path(workspace) / "results" / "_last_run_stats.json"
-    stats_path.parent.mkdir(parents=True, exist_ok=True)
-    stats_path.write_text(json.dumps(asdict(stats), indent=2))
+                if verbose:
+                    label = {"execute_bash": f"  $ {args.get('command', '')}",
+                             "write_file": f"  write -> {args.get('path', '')}",
+                             "read_file": f"  read <- {args.get('path', '')}"}
+                    print(label.get(fc.name, f"  {fc.name}"))
+                    preview = result[:200] + "..." if len(result) > 200 else result
+                    print(f"    {preview}\n")
 
-    if verbose:
-        print(f"\n{'='*60}")
-        print(f"Spark completed in {turns} turns | {duration:.1f}s")
-        print(f"Tokens: {total_in:,} in + {total_out:,} out = {total_tokens:,}")
-        print(f"Cost: ${cost:.6f}")
-        print(f"{'='*60}\n")
-        print(final_text)
+                tool_responses.append(
+                    types.Part.from_function_response(name=fc.name, response={"result": result})
+                )
 
-    return final_text
+            response = self.chat.send_message(tool_responses)
+            inp, out = _extract_usage(response)
+            run_in += inp
+            run_out += out
+            turns += 1
+
+        final_text = _get_text(response)
+        duration = time.time() - start
+        run_cost = _calculate_cost(self.model, run_in, run_out)
+
+        # Accumulate session totals
+        self.total_in += run_in
+        self.total_out += run_out
+        self.total_turns += turns
+        self.total_cost += run_cost
+
+        # Save session to disk
+        self._save()
+
+        # Save last run stats
+        stats = RunStats(
+            model=self.model, turns=turns,
+            input_tokens=run_in, output_tokens=run_out,
+            total_tokens=run_in + run_out, cost_usd=run_cost,
+            duration_seconds=round(duration, 2),
+        )
+        stats_path = Path(self.workspace) / "results" / "_last_run_stats.json"
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(asdict(stats), indent=2))
+
+        if verbose:
+            print(f"\n{'='*60}")
+            print(f"Spark completed in {turns} turns | {duration:.1f}s")
+            print(f"Tokens: {run_in:,} in + {run_out:,} out = {run_in + run_out:,}")
+            print(f"Cost: ${run_cost:.6f} | Session total: ${self.total_cost:.6f}")
+            print(f"{'='*60}\n")
+            print(final_text)
+
+        return final_text
+
+
+# --- Convenience function for single-shot usage ---
+
+def run(prompt: str, verbose: bool = True) -> str:
+    """Run a single prompt in an ephemeral session."""
+    session = Session()
+    return session.run(prompt, verbose=verbose)

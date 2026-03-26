@@ -9,3 +9,5 @@
 | `load-flow-modify-gen.md` | Modificar un generador/red externa y correr flujo |
 | `short-circuit-bus.md` | Configurar y ejecutar cortocircuito trifásico en una barra (IEC 60909) |
 | `disconnect-element-low-voltage.md` | Desconectar un transformador (TR2) y detectar barras con tensión < 0.95 pu |
+| `sc-line-fault-failure.md` | ❌ [FALLIDO] Cortocircuito en línea al 50% (problemas con eventos en ComShc) |
+| `sc-line-fault-success.md` | ✅ Cortocircuito en línea al 30% usando eventos y método Complete |

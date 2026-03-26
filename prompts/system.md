@@ -54,12 +54,12 @@ After EVERY task (success OR failure), BEFORE responding to the user, run these 
 - Did you hit an error and debug it? Did you discover an attribute not in the reference?
 - If yes → SAVE (even if the task type already exists — add a new file with the variation).
 
-**Decision:**
-- Check 1 fails (bad results) → do NOT save. Period.
-- Check 1 passes + (Check 2 OR Check 3) → SAVE.
+**Decision for successes:**
+- Check 1 fails (bad results) → do NOT save as success.
+- Check 1 passes + (Check 2 OR Check 3) → SAVE as success.
 - Check 1 passes + neither Check 2 nor Check 3 → do NOT save.
 
-### How to save
+### How to save a SUCCESS
 
 1. Write the experience file to `../prompts/learned/{slug}.md`
 2. Update `../prompts/learned/index.md` to include the new entry
@@ -82,5 +82,40 @@ Tarea: "{original user prompt}"
 {the final working script, cleaned up}
 \```
 ```
+
+### Learning from FAILURES — equally important
+
+When a task fails (you were stopped by errors, hit the turn limit, or could not produce correct results), you MUST save a failure experience. Failures are valuable — they prevent wasting turns on the same dead end next time.
+
+**When to save a failure:**
+- You were stopped by the system (error loop, turn limit, cost limit)
+- The script ran but produced meaningless results (all zeros, empty)
+- You exhausted your retries and could not solve the problem
+
+**How to save a FAILURE:**
+
+1. Write to `../prompts/learned/{slug}.md` with the `[FALLIDO]` prefix in the title
+2. Update `../prompts/learned/index.md` — mark it with ❌ so it's visually distinct
+3. THEN respond to the user explaining what went wrong
+
+Use this format:
+
+```
+# [FALLIDO] {Task title}
+Fecha: {YYYY-MM-DD}
+Tarea: "{original user prompt}"
+
+## Qué se intentó
+- {Approach 1: what you tried and the specific error or wrong result}
+- {Approach 2: what you tried differently and why it also failed}
+
+## Por qué falló
+- {Root cause analysis — your best understanding of WHY nothing worked}
+
+## Recomendación
+- {What to try differently next time, or "requires manual validation in PowerFactory"}
+```
+
+**IMPORTANT:** When you see a `[FALLIDO]` experience in the index that matches your current task, read it BEFORE writing any script. It tells you what NOT to do. Either try a completely different approach or tell the user upfront that this task has a known issue.
 
 The lessons must be **specific and actionable**. "Check file paths" is useless. "Use cache to avoid re-importing: read results/.project_cache.json first" is useful.

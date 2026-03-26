@@ -36,6 +36,14 @@ RETRY_DELAYS = [2, 5, 10]  # seconds
 MAX_OUTPUT_CHARS = 10_000  # truncate tool output to prevent context overflow
 MAX_CONSECUTIVE_ERRORS = 3  # stop if same error repeats this many times
 
+_FAILURE_SAVE_PROMPT = (
+    "SYSTEM: This task has FAILED. You were stopped because you hit the error/turn/cost limit. "
+    "BEFORE responding to the user, you MUST save a failure experience to ../prompts/learned/ "
+    "following the [FALLIDO] format from your instructions. "
+    "This is mandatory — do NOT skip it. Save what you tried, why it failed, and what to avoid next time. "
+    "Then respond to the user explaining the failure."
+)
+
 # Pricing per million tokens (https://ai.google.dev/gemini-api/docs/pricing)
 MODEL_PRICING = {
     # Gemini 3.x
@@ -322,6 +330,7 @@ class Session:
         turns = 0
         consecutive_errors = 0
         last_error_sig = None
+        stopped_reason = None  # None = normal completion, str = forced stop
 
         while turns < self.max_turns:
             # Check cost limit
@@ -329,6 +338,7 @@ class Session:
             if run_cost_so_far >= self.max_cost_usd:
                 if verbose:
                     print(f"\n  [STOPPED] Cost limit reached: ${run_cost_so_far:.4f} >= ${self.max_cost_usd:.2f}")
+                stopped_reason = "cost_limit"
                 break
 
             calls = _get_function_calls(response)
@@ -369,11 +379,10 @@ class Session:
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 if verbose:
                     print(f"\n  [STOPPED] Same error repeated {consecutive_errors} times. Stopping to avoid wasting turns.")
-                # Tell the model to stop and report
                 tool_responses.append(
                     types.Part.from_function_response(
                         name="execute_bash",
-                        response={"result": f"SYSTEM: The same error has occurred {consecutive_errors} times. STOP retrying. Report the error to the user and suggest what might be wrong."}
+                        response={"result": _FAILURE_SAVE_PROMPT}
                     )
                 )
 
@@ -386,6 +395,7 @@ class Session:
             except ContextOverflowError:
                 if verbose:
                     print("\n  [STOPPED] Context overflow — conversation too long.")
+                stopped_reason = "context_overflow"
                 break
 
             inp, out = _extract_usage(response)
@@ -393,9 +403,73 @@ class Session:
             run_out += out
             turns += 1
 
-            # After injecting error-loop stop, break out
+            # After injecting error-loop stop, let the model respond (save failure + report)
+            # but then break — no more tool calls after this
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                stopped_reason = "error_loop"
+                # Give model extra turns to save the failure experience
+                for _ in range(3):
+                    calls = _get_function_calls(response)
+                    if not calls:
+                        break
+                    tool_responses = []
+                    for fc in calls:
+                        args = dict(fc.args) if fc.args else {}
+                        result = _dispatch(fc.name, args, self.workspace)
+                        if verbose:
+                            label = {"execute_bash": f"  $ {args.get('command', '')}",
+                                     "write_file": f"  write -> {args.get('path', '')}",
+                                     "read_file": f"  read <- {args.get('path', '')}"}
+                            print(label.get(fc.name, f"  {fc.name}"))
+                            preview = result[:200] + "..." if len(result) > 200 else result
+                            print(f"    {preview}\n")
+                        tool_responses.append(
+                            types.Part.from_function_response(name=fc.name, response={"result": result})
+                        )
+                    try:
+                        response = _send_with_retry(self.chat, tool_responses, verbose)
+                    except ContextOverflowError:
+                        break
+                    inp, out = _extract_usage(response)
+                    run_in += inp
+                    run_out += out
+                    turns += 1
                 break
+
+        # If stopped by max turns, give one last chance to save failure
+        if turns >= self.max_turns and stopped_reason is None:
+            stopped_reason = "max_turns"
+
+        if stopped_reason in ("cost_limit", "max_turns"):
+            if verbose:
+                print(f"\n  [SAVING FAILURE] Giving model a chance to save what it learned...")
+            try:
+                response = _send_with_retry(self.chat, _FAILURE_SAVE_PROMPT, verbose)
+                inp, out = _extract_usage(response)
+                run_in += inp
+                run_out += out
+                # Let it do write_file calls to save the experience
+                for _ in range(3):
+                    calls = _get_function_calls(response)
+                    if not calls:
+                        break
+                    tool_responses = []
+                    for fc in calls:
+                        args = dict(fc.args) if fc.args else {}
+                        result = _dispatch(fc.name, args, self.workspace)
+                        if verbose:
+                            label = {"write_file": f"  write -> {args.get('path', '')}",
+                                     "read_file": f"  read <- {args.get('path', '')}"}
+                            print(label.get(fc.name, f"  {fc.name}"))
+                        tool_responses.append(
+                            types.Part.from_function_response(name=fc.name, response={"result": result})
+                        )
+                    response = _send_with_retry(self.chat, tool_responses, verbose)
+                    inp, out = _extract_usage(response)
+                    run_in += inp
+                    run_out += out
+            except Exception:
+                pass  # best-effort — don't crash if saving fails
 
         final_text = _get_text(response)
         duration = time.time() - start

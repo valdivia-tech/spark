@@ -28,5 +28,5 @@
 
 ## Low Priority
 
-- [ ] **Server mode** — FastAPI endpoint to receive tasks from Teams/Web proxy on Cloud Run.
+- [ ] **Server mode** — FastAPI endpoint to receive tasks.
 - [ ] **Embedding-based retrieval** — When the skill library grows past ~50 entries, switch from full-index reading to semantic search.

@@ -29,23 +29,64 @@ NOTE: Do NOT pass '/min /nologo' to GetApplicationExt — PowerFactory 2026 does
 
 ## Load a .pfd project
 
-IMPORTANT: ActivateProject() takes a STRING (project name), NOT an object.
-Use project.Activate() if you have the object, or app.ActivateProject("name_string").
+IMPORTANT: Projects persist in PowerFactory between runs. Re-importing creates duplicates
+with "(N)" suffixes. ALWAYS use the cache pattern below to avoid this.
+
+The .pfd filename does NOT match the internal project name (e.g., "7-bus.pfd" → "Taller 2").
+Use a JSON cache file to remember the mapping after first import.
 
 ```python
+import os, json
+
 user = app.GetCurrentUser()
-projects_before = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+pfd_path = os.path.abspath(os.path.join("..", "projects", "7-bus.pfd"))
+pfd_filename = os.path.basename(pfd_path)
 
-import_obj = user.CreateObject('CompfdImport', 'ImportPfd')
-import_obj.SetAttribute("e:g_file", str(pfd_path))
-import_obj.g_target = user
-result = import_obj.Execute()  # 0 = success
-import_obj.Delete()
+# Cache file maps pfd filenames to internal project names
+cache_file = os.path.join("results", ".project_cache.json")
+os.makedirs("results", exist_ok=True)
+cache = {}
+if os.path.exists(cache_file):
+    with open(cache_file) as f:
+        cache = json.load(f)
 
-projects_after = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
-new_projects = projects_after - projects_before
-project_name = list(new_projects)[0]
-app.ActivateProject(project_name)  # pass the NAME string, not the object
+project_name = cache.get(pfd_filename)
+
+if project_name:
+    # Verify the cached project still exists
+    existing = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+    if project_name not in existing:
+        project_name = None  # cache stale, re-import
+
+if not project_name:
+    # First time — import and detect the internal name
+    projects_before = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+
+    import_obj = user.CreateObject('CompfdImport', 'ImportPfd')
+    import_obj.SetAttribute("e:g_file", str(pfd_path))
+    import_obj.g_target = user
+    import_obj.Execute()
+    import_obj.Delete()
+
+    projects_after = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+    new_projects = projects_after - projects_before
+    if new_projects:
+        project_name = list(new_projects)[0]
+    else:
+        raise RuntimeError(f"Import failed: no new project detected for {pfd_filename}")
+
+    # Save to cache
+    cache[pfd_filename] = project_name
+    with open(cache_file, "w") as f:
+        json.dump(cache, f, indent=2)
+
+# Activate using the object
+proj = None
+for p in (user.GetContents("*.IntPrj") or []):
+    if p.loc_name == project_name:
+        proj = p
+        break
+proj.Activate()
 ```
 
 ## Power flow
@@ -99,11 +140,49 @@ for g in app.GetCalcRelevantObjects("*.ElmSym"):
 
 ## Short circuit
 
+IMPORTANT: Short circuit in PowerFactory has TWO approaches:
+- **Method A (simple)**: Direct fault on a bus using ComShc only — no event needed
+- **Method B (event-based)**: Create EvtShc for faults on lines at specific locations
+
+### Method A: Short circuit on a bus (preferred for bus faults)
+
+```python
+# Find the target bus
+target_bus = None
+for bus in app.GetCalcRelevantObjects("*.ElmTerm"):
+    if "bus_name" in bus.loc_name:  # partial match
+        target_bus = bus
+        break
+
+shc = app.GetFromStudyCase('ComShc')
+# IMPORTANT: The attribute is iopt_mde, NOT iopt_shc
+shc.iopt_mde = 0      # Standard: 0=IEC60909, 1=Complete, 2=ANSI, 3=IEC61363
+shc.shcobj = target_bus  # set the fault location to the bus
+shc.iopt_allbus = 0    # 0=single fault location, 2=all buses
+# Fault type on ComShc: iopt_shc attribute
+# 0=3-phase, 1=2-phase, 2=1-phase-ground, 3=2-phase-ground
+shc.iopt_shc = "3PSC"  # IMPORTANT: Use STRING values: "3PSC", "2PSC", "1PSC", "2PSCG"
+error_code = shc.Execute()  # 0 = ok
+
+# Read results FROM THE BUS after calculation
+if error_code == 0 and target_bus.HasAttribute("m:Ikss"):
+    ikss = target_bus.GetAttribute("m:Ikss")   # Initial symmetrical SC current kA
+    ip = target_bus.GetAttribute("m:ip")       # Peak SC current kA
+    ib = target_bus.GetAttribute("m:Ib")       # Breaking current kA (if available)
+    ik = target_bus.GetAttribute("m:Ik")       # Steady-state SC current kA (if available)
+    skss = target_bus.GetAttribute("m:Skss")   # SC power MVA
+```
+
+IMPORTANT: Results are read from the BUS object (target_bus), NOT from the ComShc command object.
+If Ikss returns 0, the fault location was not set correctly.
+
+### Method B: Short circuit on a line (event-based)
+
 ```python
 study_case = app.GetActiveStudyCase()
 evt_shc = study_case.CreateObject('EvtShc', 'TempFault')
 
-# Fault type: 0=three-phase, 1=two-phase, 2=two-phase-ground, 3=single-phase-ground
+# Fault type on event: 0=three-phase, 1=two-phase, 2=two-phase-ground, 3=single-phase-ground
 evt_shc.i_shc = 0
 
 # Fault location on a line
@@ -117,21 +196,24 @@ evt_shc.i_p_target = 50   # percentage along line (0-100)
 evt_shc.R_f = 0.0          # fault resistance ohms
 
 shc = app.GetFromStudyCase('ComShc')
-# Standard: 0=IEC60909, 1=Complete, 2=ANSI, 3=IEC61363
-shc.iopt_mde = 0
+shc.iopt_mde = 0   # IEC60909
 error_code = shc.Execute()
 
-ik_initial = evt_shc.GetAttribute("m:Ikss") if evt_shc.HasAttribute("m:Ikss") else 0
-ip_peak = evt_shc.GetAttribute("m:ip") if evt_shc.HasAttribute("m:ip") else 0
-
-# Bus voltages during fault
+# Read results from BUSES, not from the event
 for bus in app.GetCalcRelevantObjects("*.ElmTerm"):
-    v_pu = bus.GetAttribute("m:u")
-    v_drop = (1.0 - v_pu) * 100
+    if bus.HasAttribute("m:Ikss"):
+        ikss = bus.GetAttribute("m:Ikss")
+        print(f"{bus.loc_name}: Ikss={ikss:.3f} kA")
 
 # ALWAYS clean up temporary fault event
 evt_shc.Delete()
 ```
+
+### Common mistakes with short circuit
+- Do NOT use `shc.iopt_shc = 0` (integer) — use `shc.iopt_shc = "3PSC"` (string)
+- Do NOT read Ikss from the event object — read from bus objects
+- Do NOT use `GetAttributes()` — it doesn't exist. Use `GetAttribute("attr_name")` for specific attributes
+- Always check `HasAttribute()` before `GetAttribute()` to avoid crashes
 
 ## Element control
 

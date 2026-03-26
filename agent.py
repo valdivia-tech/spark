@@ -33,6 +33,8 @@ SYSTEM_PROMPT = _build_system_prompt()
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [2, 5, 10]  # seconds
+MAX_OUTPUT_CHARS = 10_000  # truncate tool output to prevent context overflow
+MAX_CONSECUTIVE_ERRORS = 3  # stop if same error repeats this many times
 
 # Pricing per million tokens (https://ai.google.dev/gemini-api/docs/pricing)
 MODEL_PRICING = {
@@ -86,6 +88,13 @@ TOOL_DECLARATIONS = types.Tool(function_declarations=[
 ])
 
 
+def _truncate(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
+    if len(text) <= max_chars:
+        return text
+    half = max_chars // 2
+    return text[:half] + f"\n\n... [TRUNCATED {len(text) - max_chars} chars] ...\n\n" + text[-half:]
+
+
 def _execute_bash(command: str, workspace: str) -> str:
     try:
         # Strip comment lines — # is not valid in Windows cmd.exe
@@ -97,9 +106,9 @@ def _execute_bash(command: str, workspace: str) -> str:
         r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=300, cwd=workspace)
         parts = []
         if r.stdout:
-            parts.append(f"stdout:\n{r.stdout}")
+            parts.append(f"stdout:\n{_truncate(r.stdout)}")
         if r.stderr:
-            parts.append(f"stderr:\n{r.stderr}")
+            parts.append(f"stderr:\n{_truncate(r.stderr)}")
         parts.append(f"exit_code: {r.returncode}")
         return "\n".join(parts)
     except subprocess.TimeoutExpired:
@@ -168,6 +177,11 @@ def _get_text(response) -> str:
     return "".join(p.text for p in response.candidates[0].content.parts if p.text)
 
 
+class ContextOverflowError(Exception):
+    """Raised when the conversation exceeds Gemini's context limit."""
+    pass
+
+
 def _send_with_retry(chat, message, verbose: bool = False):
     """Send a message to Gemini with automatic retry on transient errors."""
     for attempt in range(MAX_RETRIES + 1):
@@ -175,6 +189,11 @@ def _send_with_retry(chat, message, verbose: bool = False):
             return chat.send_message(message)
         except Exception as e:
             error_str = str(e).lower()
+
+            # Context overflow — not retryable
+            if any(k in error_str for k in ("400", "token", "context length", "too long", "request too large")):
+                raise ContextOverflowError(f"Context overflow: {e}") from e
+
             is_transient = any(k in error_str for k in ("429", "500", "503", "overloaded", "rate", "unavailable", "deadline", "timeout"))
 
             if not is_transient or attempt == MAX_RETRIES:
@@ -196,7 +215,7 @@ class Session:
     """A persistent agent session. Maintains chat history across multiple prompts."""
 
     def __init__(self, session_id: str | None = None):
-        self.model = config.get("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
+        self.model = config.get("GEMINI_MODEL", "gemini-3-flash-preview")
         self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
         self.max_turns = int(config.get("MAX_TURNS", "30"))
         self.max_cost_usd = float(config.get("MAX_COST_USD", "0.50"))
@@ -246,6 +265,15 @@ class Session:
                     part["thought_signature"] = base64.b64decode(part["thought_signature"])
         return [types.Content(**entry) for entry in entries]
 
+    def _cleanup_scripts(self):
+        """Remove .py scripts from workspace after each run."""
+        ws = Path(self.workspace)
+        for f in ws.glob("*.py"):
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
     def _save(self):
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         history_dicts = []
@@ -280,11 +308,20 @@ class Session:
         start = time.time()
         run_in, run_out = 0, 0
 
-        response = _send_with_retry(self.chat, prompt, verbose)
+        try:
+            response = _send_with_retry(self.chat, prompt, verbose)
+        except ContextOverflowError:
+            if verbose:
+                print("\n  [STOPPED] Context overflow — conversation too long. Start a new session.")
+            self._save()
+            return "Error: context overflow. La conversación es demasiado larga. Inicia una nueva sesión."
+
         inp, out = _extract_usage(response)
         run_in += inp
         run_out += out
         turns = 0
+        consecutive_errors = 0
+        last_error_sig = None
 
         while turns < self.max_turns:
             # Check cost limit
@@ -299,6 +336,7 @@ class Session:
                 break
 
             tool_responses = []
+            has_error = False
             for fc in calls:
                 args = dict(fc.args) if fc.args else {}
                 result = _dispatch(fc.name, args, self.workspace)
@@ -311,15 +349,53 @@ class Session:
                     preview = result[:200] + "..." if len(result) > 200 else result
                     print(f"    {preview}\n")
 
+                # Track consecutive execution errors
+                if fc.name == "execute_bash" and "exit_code: 1" in result:
+                    has_error = True
+                    # Extract error signature (first line of traceback)
+                    error_lines = [l for l in result.split("\n") if "Error" in l or "error" in l.lower()]
+                    error_sig = error_lines[0][:100] if error_lines else "unknown"
+                    if error_sig == last_error_sig:
+                        consecutive_errors += 1
+                    else:
+                        consecutive_errors = 1
+                        last_error_sig = error_sig
+
                 tool_responses.append(
                     types.Part.from_function_response(name=fc.name, response={"result": result})
                 )
 
-            response = _send_with_retry(self.chat, tool_responses, verbose)
+            # Stop if stuck in an error loop
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                if verbose:
+                    print(f"\n  [STOPPED] Same error repeated {consecutive_errors} times. Stopping to avoid wasting turns.")
+                # Tell the model to stop and report
+                tool_responses.append(
+                    types.Part.from_function_response(
+                        name="execute_bash",
+                        response={"result": f"SYSTEM: The same error has occurred {consecutive_errors} times. STOP retrying. Report the error to the user and suggest what might be wrong."}
+                    )
+                )
+
+            if not has_error:
+                consecutive_errors = 0
+                last_error_sig = None
+
+            try:
+                response = _send_with_retry(self.chat, tool_responses, verbose)
+            except ContextOverflowError:
+                if verbose:
+                    print("\n  [STOPPED] Context overflow — conversation too long.")
+                break
+
             inp, out = _extract_usage(response)
             run_in += inp
             run_out += out
             turns += 1
+
+            # After injecting error-loop stop, break out
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                break
 
         final_text = _get_text(response)
         duration = time.time() - start
@@ -333,6 +409,9 @@ class Session:
 
         # Save session to disk
         self._save()
+
+        # Clean up intermediate scripts (the final version is saved in learned/)
+        self._cleanup_scripts()
 
         # Save last run stats
         stats = RunStats(

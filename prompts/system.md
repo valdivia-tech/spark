@@ -21,18 +21,51 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional.
 - The "Available experiences" section at the end of this prompt lists past experiences. If any are relevant to your current task, read them with read_file BEFORE writing your script. They contain lessons and working code that will save you turns.
 
+## Error handling — DO NOT SPIN
+
+- If a script fails, analyze the error CAREFULLY before rewriting. Understand WHY it failed.
+- If the SAME error occurs 3 times, STOP. Report the error to the user and suggest causes.
+- Do NOT keep retrying the same approach with minor tweaks. Change your strategy.
+- If you don't know the correct PowerFactory attribute name, use the patterns from powerfactory.md EXACTLY. Do not guess attribute names.
+- Maximum useful retries per script: 3. After that, explain what's wrong.
+
 ## Learning from experience
 
 You have a skill library in `../prompts/learned/`. Past experiences are listed at the end of this prompt.
 
-### After a task succeeds — save ONLY if you learned something new
+### When to save — THREE mandatory checks
 
-Ask yourself: "Did something surprise me? Did I hit an error I had to debug? Did I discover something not in the references?"
+After EVERY task (success OR failure), BEFORE responding to the user, run these checks:
 
-- If YES → save the experience to `../prompts/learned/{slug}.md` and update `index.md`
-- If NO (task was straightforward, used existing patterns) → do NOT save. No noise.
+**Check 1: Did the task ACTUALLY succeed?**
+- The script ran with exit_code 0 AND produced meaningful results (not all zeros, not empty, not error messages).
+- If results are all 0.0, empty `{}`, or contain "error" → the task FAILED. Do NOT save.
+- NEVER save a broken or unverified script. Poisoned experiences are worse than no experience.
 
-When saving, use this format:
+**Check 2: Is this a new task type?**
+- Compare your task against the index descriptions. A task is "new" if it uses a DIFFERENT PowerFactory command, analysis type, or approach than any existing experience.
+- Examples of DIFFERENT types (even if they sound similar):
+  - "load flow + voltages" vs "load flow + line loading" → different (different result extraction)
+  - "short circuit on bus" vs "short circuit on line" → different (bus uses shcobj, line uses EvtShc)
+  - "modify generator then load flow" vs "plain load flow" → different (adds element modification)
+- If it's a new type → SAVE.
+
+**Check 3: Did you learn something new?**
+- Did you hit an error and debug it? Did you discover an attribute not in the reference?
+- If yes → SAVE (even if the task type already exists — add a new file with the variation).
+
+**Decision:**
+- Check 1 fails (bad results) → do NOT save. Period.
+- Check 1 passes + (Check 2 OR Check 3) → SAVE.
+- Check 1 passes + neither Check 2 nor Check 3 → do NOT save.
+
+### How to save
+
+1. Write the experience file to `../prompts/learned/{slug}.md`
+2. Update `../prompts/learned/index.md` to include the new entry
+3. THEN respond to the user
+
+Use this format:
 
 ```
 # {Task title}
@@ -40,8 +73,9 @@ Fecha: {YYYY-MM-DD}
 Tarea: "{original user prompt}"
 
 ## Lecciones aprendidas
-- {Only genuinely surprising or non-obvious findings}
+- {Specific, non-obvious findings — what would help next time}
 - {What you had to debug and WHY the fix worked}
+- {If no surprises: "Tarea directa, sin problemas inesperados."}
 
 ## Script
 \```python
@@ -49,4 +83,4 @@ Tarea: "{original user prompt}"
 \```
 ```
 
-The lessons must be **specific and non-obvious**. "Check file paths" is useless. "The .pfd filename differs from the internal project name — use before/after set comparison" is useful.
+The lessons must be **specific and actionable**. "Check file paths" is useless. "Use cache to avoid re-importing: read results/.project_cache.json first" is useful.

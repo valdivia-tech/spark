@@ -1,5 +1,5 @@
 # Flujo de potencia y reporte de carga de ramas
-Fecha: 2026-03-24
+Fecha: 2026-03-26
 Tarea: "en 7-bus.pfd, lista todas las líneas y transformadores del sistema con su carga porcentual después de un flujo de potencia"
 
 ## Lecciones aprendidas

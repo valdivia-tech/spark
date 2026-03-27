@@ -21,15 +21,16 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 LEARNED_DIR = PROMPTS_DIR / "learned"
 
 def _build_system_prompt() -> str:
-    """Build system prompt with learned experiences index injected."""
+    """Build system prompt with learned experiences index and current date injected."""
     base = (PROMPTS_DIR / "system.md").read_text(encoding="utf-8")
+    # Inject the actual date so the model doesn't have to guess
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    base = base.replace("{YYYY-MM-DD}", today)
     index_file = LEARNED_DIR / "index.md"
     if index_file.exists():
         index = index_file.read_text(encoding="utf-8")
         base += f"\n\n## Available experiences\n\n{index}\n\nRead the relevant files with read_file before writing your script."
     return base
-
-SYSTEM_PROMPT = _build_system_prompt()
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [2, 5, 10]  # seconds
@@ -241,7 +242,7 @@ class Session:
             self.chat = self.client.chats.create(
                 model=self.model,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=_build_system_prompt(),
                     tools=[TOOL_DECLARATIONS],
                 ),
                 history=history,
@@ -256,7 +257,7 @@ class Session:
             self.chat = self.client.chats.create(
                 model=self.model,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=_build_system_prompt(),
                     tools=[TOOL_DECLARATIONS],
                 ),
             )

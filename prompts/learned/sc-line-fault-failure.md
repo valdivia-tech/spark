@@ -1,5 +1,5 @@
 # [FALLIDO] Cortocircuito en línea al 50%
-Fecha: 2025-05-15
+Fecha: 2026-03-26
 Tarea: "en 7-bus.pfd, haz un cortocircuito trifásico en la Linea 1 al 50% de su longitud y muestra las corrientes de falla en todas las barras"
 
 ## Qué se intentó

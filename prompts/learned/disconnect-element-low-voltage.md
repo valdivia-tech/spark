@@ -1,5 +1,5 @@
 # Desconectar elemento y analizar tensiones bajas
-Fecha: 2026-03-24
+Fecha: 2026-03-26
 Tarea: "en 7-bus.pfd, desconecta el transformador TR2 y corre un flujo de potencia. Muestra qué barras quedaron con tensión menor a 0.95 pu"
 
 ## Lecciones aprendidas

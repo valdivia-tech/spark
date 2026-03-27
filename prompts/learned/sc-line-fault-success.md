@@ -1,5 +1,5 @@
 # Cortocircuito en línea al 30%
-Fecha: 2026-03-24
+Fecha: 2026-03-26
 Tarea: "en 7-bus.pfd, haz un cortocircuito trifásico en la Linea 2 al 30% y muestra las corrientes de falla"
 
 ## Lecciones aprendidas

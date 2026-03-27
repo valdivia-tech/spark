@@ -1,5 +1,5 @@
 # Modificar elemento y correr flujo de potencia
-Fecha: 2026-03-24
+Fecha: 2026-03-26
 Tarea: "en 7-bus.pfd, cambia la potencia del generador Red Externa a 10 MW, corre un flujo de potencia y muestra las tensiones de todas las barras"
 
 ## Lecciones aprendidas

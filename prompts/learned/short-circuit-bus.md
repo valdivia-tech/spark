@@ -1,5 +1,5 @@
 # Cortocircuito trifásico en barra
-Fecha: 2026-03-24
+Fecha: 2026-03-26
 Tarea: "haz un cortocircuito trifásico en la barra S/E A 110 kV del proyecto 7-bus.pfd y muestra Ikss, ip y Skss"
 
 ## Lecciones aprendidas

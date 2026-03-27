@@ -3,5 +3,7 @@ __pycache__/
 .venv/
 workspace/
 .env
+.env.*
+!.env.example
 CLAUDE.md
 **/CLAUDE.md

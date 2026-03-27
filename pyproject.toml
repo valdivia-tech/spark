@@ -3,9 +3,16 @@ name = "spark"
 version = "0.1.0"
 description = "Agente de código eléctrico para DIgSILENT PowerFactory"
 requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Valdivia Tech", email = "cristian.valdivia@alumnos.usm.cl" },
+]
 dependencies = [
     "google-genai>=1.0.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/valdivia-tech/spark"
 
 [project.scripts]
 spark = "spark:main"

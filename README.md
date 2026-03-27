@@ -15,7 +15,7 @@ Coding agent for DIgSILENT PowerFactory. Takes natural language instructions, wr
 ## Setup
 
 ```bash
-git clone <repo-url> spark
+git clone https://github.com/valdivia-tech/spark.git
 cd spark
 cp .env.example .env   # set your GOOGLE_API_KEY
 uv sync

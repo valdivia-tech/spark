@@ -16,6 +16,7 @@ Repository = "https://github.com/valdivia-tech/spark"
 
 [project.scripts]
 spark = "spark:main"
+spark-server = "server:main"
 
 [project.optional-dependencies]
 server = [

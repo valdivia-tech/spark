@@ -8,12 +8,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 import config
-from agent import Session, SESSIONS_DIR, LEARNED_DIR
+from agent import Session, SESSIONS_DIR, LEARNED_DIR, PROMPTS_DIR
 
 
 # --- Models ---
@@ -63,7 +65,14 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="Spark", version="0.1.0", lifespan=_lifespan, redoc_url=None)
 
 
-# --- Health ---
+# --- UI + Health ---
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")
@@ -71,7 +80,25 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/prompt")
+def get_prompt() -> PlainTextResponse:
+    return PlainTextResponse((PROMPTS_DIR / "system.md").read_text())
+
+
+@app.get("/powerfactory")
+def get_powerfactory() -> PlainTextResponse:
+    return PlainTextResponse((PROMPTS_DIR / "powerfactory.md").read_text())
+
+
 # --- Tasks ---
+
+
+def _safe_child(base: Path, name: str, suffix: str = "") -> Path:
+    """Resolve a child path and ensure it stays inside base (prevents path traversal)."""
+    path = (base / f"{name}{suffix}").resolve()
+    if not path.is_relative_to(base.resolve()):
+        raise HTTPException(400, "Invalid path")
+    return path
 
 
 def _run_task(task: _Task, prompt: str):
@@ -99,6 +126,11 @@ def create_task(req: TaskRequest) -> TaskResponse:
     _tasks[task.task_id] = task
     threading.Thread(target=_run_task, args=(task, req.prompt), daemon=True).start()
     return TaskResponse(**task.__dict__)
+
+
+@app.get("/tasks")
+def list_tasks() -> list[TaskResponse]:
+    return [TaskResponse(**t.__dict__) for t in _tasks.values()]
 
 
 @app.get("/tasks/{task_id}")
@@ -133,7 +165,7 @@ def list_sessions() -> list[dict]:
 
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str) -> dict:
-    path = SESSIONS_DIR / f"{session_id}.json"
+    path = _safe_child(SESSIONS_DIR, session_id, ".json")
     if not path.exists():
         raise HTTPException(404, "Session not found")
     data = json.loads(path.read_text())
@@ -166,7 +198,7 @@ def list_learned() -> list[dict]:
 
 @app.get("/learned/{slug}")
 def get_learned(slug: str) -> PlainTextResponse:
-    path = LEARNED_DIR / f"{slug}.md"
+    path = _safe_child(LEARNED_DIR, slug, ".md")
     if not path.exists():
         raise HTTPException(404, "Experience not found")
     return PlainTextResponse(path.read_text())

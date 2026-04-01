@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spark</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; padding: 2rem; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  h1 span { background: linear-gradient(90deg, #00bfff, #e040a0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+  /* Stats bar */
+  .stats { display: flex; gap: 1rem; margin-bottom: 2rem; }
+  .stat { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; text-align: center; }
+  .stat .num { font-size: 1.5rem; font-weight: 700; color: #1e3a5f; }
+  .stat .label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Sections */
+  h2 { font-size: 1.1rem; color: #1e3a5f; margin-bottom: 1rem; cursor: pointer; user-select: none; }
+  h2::before { content: attr(data-icon); margin-right: 0.5rem; }
+  section { margin-bottom: 2rem; }
+  pre { background: #f0f0f0; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; overflow-x: auto; font-size: 0.8rem; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+
+  /* Cards */
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem; }
+  .card summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .card summary::-webkit-details-marker { display: none; }
+  .card summary .title { font-weight: 500; }
+  .card summary .tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; }
+  .tag-ok { background: #dbeafe; color: #1d4ed8; }
+  .tag-fail { background: #fce7f3; color: #be185d; }
+  .tag-running { background: #fef9c3; color: #854d0e; }
+
+  /* Markdown */
+  .md { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1.25rem; margin-top: 0.75rem; font-size: 0.85rem; max-height: 500px; overflow-y: auto; }
+  .md h1, .md h2, .md h3 { margin: 1rem 0 0.5rem; color: #1a1a1a; }
+  .md h1 { font-size: 1.1rem; }
+  .md h2 { font-size: 1rem; cursor: default; color: #1a1a1a; }
+  .md h2::before { content: none; }
+  .md h3 { font-size: 0.9rem; }
+  .md p { margin-bottom: 0.5rem; }
+  .md ul, .md ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  .md li { margin-bottom: 0.25rem; }
+  .md code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
+  .md pre { background: #f0f0f0; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0.75rem 0; }
+  .md pre code { background: none; padding: 0; }
+  .md table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  .md table th, .md table td { text-align: left; padding: 0.4rem 0.6rem; border: 1px solid #ddd; }
+  .md table th { background: #f0f0f0; }
+  .md strong { color: #1a1a1a; }
+  .md blockquote { border-left: 3px solid #0ea5e9; padding-left: 1rem; color: #555; margin: 0.5rem 0; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e5e5; }
+  th { color: #888; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { color: #999; font-style: italic; padding: 1rem 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1><span>Spark</span> Dashboard</h1>
+<p class="subtitle">Agente para simulaciones electricas en DIgSILENT PowerFactory</p>
+
+<div class="stats" id="stats">
+  <div class="stat"><div class="num" id="s-sessions">-</div><div class="label">Sesiones</div></div>
+  <div class="stat"><div class="num" id="s-turns">-</div><div class="label">Turnos</div></div>
+  <div class="stat"><div class="num" id="s-cost">-</div><div class="label">Costo USD</div></div>
+  <div class="stat"><div class="num" id="s-learned">-</div><div class="label">Aprendizajes</div></div>
+</div>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('tasks')">Tasks en vivo</h2>
+  <div id="tasks"><p class="empty">Sin tasks activas.</p></div>
+</section>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('activity')">Actividad por dia</h2>
+  <div id="activity"><p class="empty">Cargando...</p></div>
+</section>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('learned')">Experiencias aprendidas</h2>
+  <div id="learned" class="hidden"><p class="empty">Cargando...</p></div>
+</section>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('prompt')">System prompt</h2>
+  <div id="prompt" class="hidden"><p class="empty">Cargando...</p></div>
+</section>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('pf')">Referencia PowerFactory</h2>
+  <div id="pf" class="hidden"><p class="empty">Cargando...</p></div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+<script>
+const API = '';
+
+function toggle(id) {
+  document.getElementById(id).classList.toggle('hidden');
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Stats ---
+
+async function loadStats(sessions, learnedCount) {
+  const totals = sessions.reduce((acc, s) => {
+    acc.turns += s.total_turns || 0;
+    acc.cost += s.total_cost_usd || 0;
+    return acc;
+  }, { turns: 0, cost: 0 });
+  document.getElementById('s-sessions').textContent = sessions.length;
+  document.getElementById('s-turns').textContent = totals.turns;
+  document.getElementById('s-cost').textContent = '$' + totals.cost.toFixed(4);
+  document.getElementById('s-learned').textContent = learnedCount;
+}
+
+// --- Tasks ---
+
+async function loadTasks() {
+  const res = await fetch(`${API}/tasks`);
+  const tasks = await res.json();
+  if (!tasks.length) {
+    document.getElementById('tasks').innerHTML = '<p class="empty">Sin tasks activas.</p>';
+    return;
+  }
+  // Most recent first
+  tasks.sort((a, b) => b.created.localeCompare(a.created));
+  let html = `<table>
+    <tr><th>ID</th><th>Sesion</th><th>Estado</th><th>Creada</th></tr>`;
+  for (const t of tasks) {
+    const tagClass = t.status === 'completed' ? 'tag-ok' : t.status === 'failed' ? 'tag-fail' : 'tag-running';
+    const label = t.status === 'completed' ? 'completada' : t.status === 'failed' ? 'fallida' : 'corriendo';
+    html += `<tr>
+      <td><code>${esc(t.task_id)}</code></td>
+      <td><code>${esc(t.session_id || '-')}</code></td>
+      <td><span class="tag ${tagClass}">${label}</span></td>
+      <td>${esc(t.created.slice(11, 19))}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  document.getElementById('tasks').innerHTML = html;
+}
+
+// Auto-refresh tasks every 5s
+setInterval(loadTasks, 5000);
+
+// --- Activity ---
+
+async function loadActivity() {
+  const res = await fetch(`${API}/sessions`);
+  const sessions = await res.json();
+  if (!sessions.length) {
+    document.getElementById('activity').innerHTML = '<p class="empty">Sin sesiones aun.</p>';
+    return sessions;
+  }
+  const days = {};
+  for (const s of sessions) {
+    const day = (s.created || '').slice(0, 10);
+    if (!day) continue;
+    if (!days[day]) days[day] = { sessions: 0, turns: 0, cost: 0 };
+    days[day].sessions++;
+    days[day].turns += s.total_turns || 0;
+    days[day].cost += s.total_cost_usd || 0;
+  }
+  const sorted = Object.entries(days).sort((a, b) => b[0].localeCompare(a[0]));
+  let html = `<table>
+    <tr><th>Dia</th><th>Sesiones</th><th>Turnos</th><th>Costo USD</th></tr>`;
+  for (const [day, d] of sorted) {
+    html += `<tr>
+      <td>${esc(day)}</td>
+      <td class="num">${d.sessions}</td>
+      <td class="num">${d.turns}</td>
+      <td class="num">$${d.cost.toFixed(4)}</td>
+    </tr>`;
+  }
+  html += '</table>';
+  document.getElementById('activity').innerHTML = html;
+  return sessions;
+}
+
+// --- Learned ---
+
+async function loadLearned() {
+  const res = await fetch(`${API}/learned`);
+  const entries = await res.json();
+  if (!entries.length) {
+    document.getElementById('learned').innerHTML = '<p class="empty">Sin experiencias aun.</p>';
+    return 0;
+  }
+  let html = '';
+  for (const e of entries) {
+    const tag = e.failed
+      ? '<span class="tag tag-fail">fallido</span>'
+      : '<span class="tag tag-ok">aprendido</span>';
+    html += `<details class="card" data-slug="${esc(e.slug)}">
+      <summary><span class="title">${esc(e.description)}</span>${tag}</summary>
+    </details>`;
+  }
+  document.getElementById('learned').innerHTML = html;
+
+  document.querySelectorAll('.card[data-slug]').forEach(el => {
+    el.addEventListener('toggle', async function () {
+      if (!this.open || this.querySelector('.md')) return;
+      const slug = this.dataset.slug;
+      const r = await fetch(`${API}/learned/${slug}`);
+      const text = await r.text();
+      const div = document.createElement('div');
+      div.className = 'md';
+      div.innerHTML = marked.parse(text);
+      this.appendChild(div);
+    });
+  });
+  return entries.length;
+}
+
+// --- Prompts ---
+
+async function loadPrompt() {
+  const res = await fetch(`${API}/prompt`);
+  const text = await res.text();
+  document.getElementById('prompt').innerHTML = `<div class="md">${marked.parse(text)}</div>`;
+}
+
+async function loadPowerFactory() {
+  const res = await fetch(`${API}/powerfactory`);
+  const text = await res.text();
+  document.getElementById('pf').innerHTML = `<div class="md">${marked.parse(text)}</div>`;
+}
+
+// --- Init ---
+
+async function init() {
+  const [sessions, learnedCount] = await Promise.all([
+    loadActivity(),
+    loadLearned(),
+  ]);
+  loadStats(sessions, learnedCount);
+  loadTasks();
+  loadPrompt();
+  loadPowerFactory();
+}
+
+init();
+</script>
+</body>
+</html>

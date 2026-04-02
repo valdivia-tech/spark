@@ -77,7 +77,11 @@ def index():
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    pf_path = config.get("POWERFACTORY_PATH")
+    return {
+        "status": "ok",
+        "powerfactory": bool(pf_path and Path(pf_path).exists()),
+    }
 
 
 @app.get("/prompt")

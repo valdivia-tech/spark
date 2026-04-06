@@ -36,6 +36,7 @@ MAX_RETRIES = 3
 RETRY_DELAYS = [2, 5, 10]  # seconds
 MAX_OUTPUT_CHARS = 10_000  # truncate tool output to prevent context overflow
 MAX_CONSECUTIVE_ERRORS = 3  # stop if same error repeats this many times
+SCRIPT_TIMEOUT = int(config.get("SCRIPT_TIMEOUT", "600"))  # seconds
 
 _FAILURE_SAVE_PROMPT = (
     "SYSTEM: This task has FAILED. You were stopped because you hit the error/turn/cost limit. "
@@ -113,7 +114,7 @@ def _execute_bash(command: str, workspace: str) -> str:
         command = "\n".join(lines).strip()
         if not command:
             return "error: empty command after stripping comments"
-        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=300, cwd=workspace)
+        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=SCRIPT_TIMEOUT, cwd=workspace)
         parts = []
         if r.stdout:
             parts.append(f"stdout:\n{_truncate(r.stdout)}")
@@ -122,7 +123,7 @@ def _execute_bash(command: str, workspace: str) -> str:
         parts.append(f"exit_code: {r.returncode}")
         return "\n".join(parts)
     except subprocess.TimeoutExpired:
-        return "error: command timed out after 300s"
+        return f"error: command timed out after {SCRIPT_TIMEOUT}s"
     except Exception as e:
         return f"error: {e}"
 

@@ -47,6 +47,7 @@ class _Task:
     result: str | None = None
     error: str | None = None
     stats: dict | None = None
+    logs: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -107,10 +108,12 @@ def _safe_child(base: Path, name: str, suffix: str = "") -> Path:
 
 
 def _run_task(task: _Task, prompt: str):
+    def log_cb(msg: str):
+        task.logs.append({"ts": datetime.now(timezone.utc).isoformat(), "msg": msg})
     try:
         session = Session(task.session_id or None)
         task.session_id = session.session_id
-        result = session.run(prompt, verbose=True)
+        result = session.run(prompt, verbose=True, log_callback=log_cb)
         task.result = result
         task.status = "completed"
         task.stats = {
@@ -143,7 +146,15 @@ def list_tasks() -> list[TaskResponse]:
 def get_task(task_id: str) -> TaskResponse:
     if task_id not in _tasks:
         raise HTTPException(404, "Task not found")
-    return TaskResponse(**_tasks[task_id].__dict__)
+    t = _tasks[task_id]
+    return TaskResponse(**{k: v for k, v in t.__dict__.items() if k != "logs"})
+
+
+@app.get("/tasks/{task_id}/logs")
+def get_task_logs(task_id: str) -> list[dict]:
+    if task_id not in _tasks:
+        raise HTTPException(404, "Task not found")
+    return _tasks[task_id].logs
 
 
 # --- Sessions ---
@@ -275,7 +286,8 @@ def main():
     import uvicorn
     port = int(config.get("PORT", "8001"))
     reload = config.get("RELOAD", "").lower() in ("1", "true")
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=reload)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=reload,
+                log_level="warning")
 
 
 if __name__ == "__main__":

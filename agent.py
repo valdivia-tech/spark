@@ -287,31 +287,42 @@ class Session:
             except Exception:
                 pass
 
+    def _emit(self, msg):
+        """Send log message to stdout and optional callback."""
+        print(msg)
+        if getattr(self, '_log_cb', None):
+            self._log_cb(msg)
+
     def _log_before(self, name, args):
         """Print what the agent is about to do."""
         if name == "write_file":
-            print(f"  Escribiendo {Path(args.get('path', '?')).name}...")
+            self._emit(f"  Escribiendo {Path(args.get('path', '?')).name}...")
         elif name == "read_file":
-            print(f"  Leyendo {Path(args.get('path', '?')).name}...")
+            self._emit(f"  Leyendo {Path(args.get('path', '?')).name}...")
         elif name == "execute_bash":
             cmd = args.get("command", "")
             script = next((t for t in cmd.split() if t.endswith(".py")), None)
             print(f"  Ejecutando {script or 'comando'}...", end=" ", flush=True)
+            if getattr(self, '_log_cb', None):
+                self._log_cb(f"  Ejecutando {script or 'comando'}...")
         else:
-            print(f"  {name}...")
+            self._emit(f"  {name}...")
 
     def _log_after(self, name, result):
         """Print the outcome after execution."""
         if name == "execute_bash":
             if "exit_code: 0" in result:
-                print("OK")
+                msg = "OK"
             elif "timed out" in result:
-                print("timeout!")
+                msg = "timeout!"
             elif "exit_code:" in result:
                 errs = [l.strip() for l in result.split("\n") if "Error" in l]
-                print(f"error: {errs[0][:100] if errs else 'fallo'}")
+                msg = f"error: {errs[0][:100] if errs else 'fallo'}"
             else:
-                print()
+                msg = ""
+            print(msg)
+            if getattr(self, '_log_cb', None) and msg:
+                self._log_cb(f"    {msg}")
 
     def _dispatch_and_track(self, name, args, execs):
         """Dispatch a tool call and track execute_bash timing."""
@@ -361,8 +372,9 @@ class Session:
         }
         self._session_file(self.session_id).write_text(json.dumps(data, indent=2, default=str))
 
-    def run(self, prompt: str, verbose: bool = True) -> str:
+    def run(self, prompt: str, verbose: bool = True, log_callback=None) -> str:
         """Send a prompt to the agent. Chat history persists between calls."""
+        self._log_cb = log_callback
         if verbose:
             print(f"\n{'='*60}")
             print(f"Spark [{self.session_id}] — {prompt[:70]}{'...' if len(prompt) > 70 else ''}")

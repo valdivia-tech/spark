@@ -109,7 +109,7 @@ def _run_task(task: _Task, prompt: str):
     try:
         session = Session(task.session_id or None)
         task.session_id = session.session_id
-        result = session.run(prompt, verbose=False)
+        result = session.run(prompt, verbose=True)
         task.result = result
         task.status = "completed"
         task.stats = {

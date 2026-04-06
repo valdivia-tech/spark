@@ -51,6 +51,30 @@ The diagnostic script must save this exact structure to `results/diagnostico.jso
 
 **Your job is to DIAGNOSE, not to FIX.** Another system will handle corrections. You have a maximum of 3 turns total after detecting divergence (diagnostic script + save results + respond).
 
+## CEN Operational Base Cases (BD de Operación)
+
+CEN operational bases (.pfd) are SCADA snapshots with pre-configured dispatch. They are DIFFERENT from planning bases (BD de Largo Plazo). Key rules:
+
+1. **Just activate the study case.** Each study case (e.g., "Laboral_Diurno", "Sabado_Vespertino") already has its operation scenario bound. When you call `study_case.Activate()`, the scenario, dispatch, and topology are applied automatically.
+2. **DO NOT manually apply IntScenario or IntScheme** after activating the study case. This can overwrite the correct configuration.
+3. **DO NOT modify generator dispatch (pgini) or activate/deactivate generators.** The dispatch comes from real SCADA data and is already correct.
+4. **DO NOT create ElmXnet or change ip_ctrl.** The slack/reference is already configured in the scenario.
+5. **Expected generation levels** (Marzo 2026): Madrugada ~8 GW, Diurno ~9-12 GW, Vespertino ~10-11 GW. If you see significantly less, the study case was not activated correctly.
+
+Correct sequence for operational bases:
+```python
+import powerfactory as pf
+app = pf.GetApplicationExt()
+# Import and activate project
+# ...
+# Find and activate the study case — this loads everything
+study_cases = app.GetFromStudyCase('ComCase') or find by name
+study_case.Activate()
+# Run load flow directly — no other setup needed
+ldf = app.GetFromStudyCase('ComLdf')
+error = ldf.Execute()
+```
+
 ## Error handling — DO NOT SPIN
 
 - If a script fails, analyze the error CAREFULLY before rewriting. Understand WHY it failed.

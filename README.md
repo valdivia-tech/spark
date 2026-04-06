@@ -31,6 +31,17 @@ uv run spark "run a power flow on BD_2030.pfd"
 uv run spark -i
 ```
 
+## Server
+
+```bash
+# Start the HTTP server + dashboard
+uv run spark-server
+```
+
+Opens on `http://localhost:8000` with:
+- **Dashboard** — live tasks, activity by day, script execution times, learned experiences
+- **REST API** — `POST /tasks`, `GET /tasks`, `GET /sessions`, `GET /script-executions`
+
 ## How it works
 
 <p align="center">
@@ -88,9 +99,13 @@ Set in `.env` or as environment variables:
 spark/
 ├── spark.py          # CLI entry point
 ├── agent.py          # ReAct loop (Gemini + tools)
+├── server.py         # FastAPI HTTP server + REST API
 ├── config.py         # Environment config
+├── static/
+│   └── index.html    # Dashboard UI
 ├── prompts/
 │   └── system.md     # System prompt with PowerFactory patterns
+├── projects/         # PowerFactory .pfd files (Git LFS)
 ├── workspace/        # Scripts and results (gitignored)
 └── .env              # API keys (gitignored)
 ```

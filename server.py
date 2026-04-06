@@ -181,6 +181,40 @@ def get_session(session_id: str) -> dict:
     return data
 
 
+# --- Results ---
+
+RESULTS_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")) / "results"
+
+
+@app.get("/results")
+def list_results() -> list[dict]:
+    """List all result files with their timing data."""
+    if not RESULTS_DIR.exists():
+        return []
+    results = []
+    for f in sorted(RESULTS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if f.name.startswith("_"):
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            results.append({
+                "name": f.stem,
+                "timing": data.get("timing"),
+                "modified": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+            })
+        except Exception:
+            continue
+    return results
+
+
+@app.get("/results/{name}")
+def get_result(name: str) -> dict:
+    path = _safe_child(RESULTS_DIR, name, ".json")
+    if not path.exists():
+        raise HTTPException(404, "Result not found")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 # --- Script executions ---
 
 

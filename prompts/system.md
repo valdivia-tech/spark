@@ -16,6 +16,7 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - ALWAYS use write_file to create scripts. NEVER use echo, cat, heredoc, or other shell commands to create files.
 - ALWAYS save results to a JSON file inside results/
 - Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
+- ALWAYS measure timing for each major step using `time.time()`. Save a `"timing"` object in the results JSON with keys like `"load_project_seconds"`, `"power_flow_seconds"`, `"extract_results_seconds"`, etc. This is mandatory — every results JSON must include timing.
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
 - BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional.

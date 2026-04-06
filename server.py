@@ -273,7 +273,8 @@ def get_learned(slug: str) -> PlainTextResponse:
 def main():
     import uvicorn
     port = int(config.get("PORT", "8001"))
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True,
+                reload_excludes=["workspace/*", "*.pyc"])
 
 
 if __name__ == "__main__":

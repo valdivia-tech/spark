@@ -290,9 +290,12 @@ async function loadPowerFactory() {
 // --- Init ---
 
 async function init() {
-  const [sessions, learnedCount] = await Promise.all([
+  const [sessions, learnedCount] = await Promise.allSettled([
     loadActivity(),
     loadLearned(),
+  ]).then(results => [
+    results[0].status === 'fulfilled' ? results[0].value : [],
+    results[1].status === 'fulfilled' ? results[1].value : 0,
   ]);
   loadStats(sessions, learnedCount);
   loadTasks();

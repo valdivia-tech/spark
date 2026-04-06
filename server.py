@@ -118,6 +118,7 @@ def _run_task(task: _Task, prompt: str):
             "total_input_tokens": session.total_in,
             "total_output_tokens": session.total_out,
             "total_cost_usd": round(session.total_cost, 6),
+            "script_executions": session.script_executions,
         }
     except Exception as e:
         task.error = str(e)
@@ -155,12 +156,15 @@ def list_sessions() -> list[dict]:
     for f in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             data = json.loads(f.read_text())
+            execs = data.get("script_executions", [])
             sessions.append({
                 "session_id": data.get("session_id", f.stem),
                 "model": data.get("model"),
                 "total_turns": data.get("total_turns", 0),
                 "total_cost_usd": data.get("total_cost_usd", 0),
                 "created": data.get("created", ""),
+                "script_exec_count": len(execs),
+                "script_exec_seconds": round(sum(e.get("duration_seconds", 0) for e in execs), 3),
             })
         except Exception:
             continue
@@ -175,6 +179,27 @@ def get_session(session_id: str) -> dict:
     data = json.loads(path.read_text())
     data.pop("history", None)
     return data
+
+
+# --- Script executions ---
+
+
+@app.get("/script-executions")
+def list_script_executions() -> list[dict]:
+    """All script executions across sessions, most recent first."""
+    if not SESSIONS_DIR.exists():
+        return []
+    all_execs = []
+    for f in SESSIONS_DIR.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            sid = data.get("session_id", f.stem)
+            for e in data.get("script_executions", []):
+                all_execs.append({**e, "session_id": sid})
+        except Exception:
+            continue
+    all_execs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return all_execs
 
 
 # --- Learned experiences ---

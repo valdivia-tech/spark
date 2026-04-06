@@ -8,7 +8,7 @@ import uuid
 import base64
 import logging
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from google import genai
 from google.genai import types
@@ -67,6 +67,7 @@ class RunStats:
     total_tokens: int
     cost_usd: float
     duration_seconds: float
+    script_executions: list = field(default_factory=list)
 
 
 # --- Tools ---
@@ -234,6 +235,7 @@ class Session:
         self.total_out = 0
         self.total_turns = 0
         self.total_cost = 0.0
+        self.script_executions = []
 
         # Load existing session or create new one
         if session_id and self._session_file(session_id).exists():
@@ -252,6 +254,7 @@ class Session:
             self.total_out = saved.get("total_output_tokens", 0)
             self.total_turns = saved.get("total_turns", 0)
             self.total_cost = saved.get("total_cost_usd", 0.0)
+            self.script_executions = saved.get("script_executions", [])
         else:
             self.session_id = session_id or uuid.uuid4().hex[:8]
             self.chat = self.client.chats.create(
@@ -283,6 +286,52 @@ class Session:
             except Exception:
                 pass
 
+    def _log_tool_status(self, name, args, result):
+        """Print a clean one-line status for a tool call."""
+        if name == "write_file":
+            print(f"  Escribiendo {Path(args.get('path', '?')).name}")
+        elif name == "read_file":
+            print(f"  Leyendo {Path(args.get('path', '?')).name}")
+        elif name == "execute_bash":
+            cmd = args.get("command", "")
+            script = next((t for t in cmd.split() if t.endswith(".py")), None)
+            label = script or "comando"
+            if "exit_code: 0" in result:
+                print(f"  Ejecutando {label}... OK")
+            elif "timed out" in result:
+                print(f"  Ejecutando {label}... timeout!")
+            elif "exit_code:" in result:
+                errs = [l.strip() for l in result.split("\n") if "Error" in l]
+                reason = errs[0][:100] if errs else "fallo"
+                print(f"  Ejecutando {label}... error: {reason}")
+            else:
+                print(f"  Ejecutando {label}...")
+        else:
+            print(f"  {name}...")
+
+    def _dispatch_and_track(self, name, args, execs):
+        """Dispatch a tool call and track execute_bash timing."""
+        t0 = time.time() if name == "execute_bash" else None
+        result = _dispatch(name, args, self.workspace)
+        if t0 is not None:
+            elapsed = round(time.time() - t0, 3)
+            exit_code = -1
+            if "exit_code: " in result:
+                try:
+                    exit_code = int(result.rsplit("exit_code: ", 1)[1].strip())
+                except (ValueError, IndexError):
+                    pass
+            elif "timed out" in result:
+                exit_code = -2
+            execs.append({
+                "command": args.get("command", ""),
+                "duration_seconds": elapsed,
+                "exit_code": exit_code,
+                "success": exit_code == 0,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        return result
+
     def _save(self):
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         history_dicts = []
@@ -303,6 +352,7 @@ class Session:
             "total_input_tokens": self.total_in,
             "total_output_tokens": self.total_out,
             "total_cost_usd": round(self.total_cost, 6),
+            "script_executions": self.script_executions,
             "history": history_dicts,
         }
         self._session_file(self.session_id).write_text(json.dumps(data, indent=2, default=str))
@@ -316,6 +366,7 @@ class Session:
 
         start = time.time()
         run_in, run_out = 0, 0
+        run_execs = []
 
         try:
             response = _send_with_retry(self.chat, prompt, verbose)
@@ -350,15 +401,10 @@ class Session:
             has_error = False
             for fc in calls:
                 args = dict(fc.args) if fc.args else {}
-                result = _dispatch(fc.name, args, self.workspace)
+                result = self._dispatch_and_track(fc.name, args, run_execs)
 
                 if verbose:
-                    label = {"execute_bash": f"  $ {args.get('command', '')}",
-                             "write_file": f"  write -> {args.get('path', '')}",
-                             "read_file": f"  read <- {args.get('path', '')}"}
-                    print(label.get(fc.name, f"  {fc.name}"))
-                    preview = result[:200] + "..." if len(result) > 200 else result
-                    print(f"    {preview}\n")
+                    self._log_tool_status(fc.name, args, result)
 
                 # Track consecutive execution errors
                 if fc.name == "execute_bash" and "exit_code: 1" in result:
@@ -416,14 +462,9 @@ class Session:
                     tool_responses = []
                     for fc in calls:
                         args = dict(fc.args) if fc.args else {}
-                        result = _dispatch(fc.name, args, self.workspace)
+                        result = self._dispatch_and_track(fc.name, args, run_execs)
                         if verbose:
-                            label = {"execute_bash": f"  $ {args.get('command', '')}",
-                                     "write_file": f"  write -> {args.get('path', '')}",
-                                     "read_file": f"  read <- {args.get('path', '')}"}
-                            print(label.get(fc.name, f"  {fc.name}"))
-                            preview = result[:200] + "..." if len(result) > 200 else result
-                            print(f"    {preview}\n")
+                            self._log_tool_status(fc.name, args, result)
                         tool_responses.append(
                             types.Part.from_function_response(name=fc.name, response={"result": result})
                         )
@@ -457,11 +498,9 @@ class Session:
                     tool_responses = []
                     for fc in calls:
                         args = dict(fc.args) if fc.args else {}
-                        result = _dispatch(fc.name, args, self.workspace)
+                        result = self._dispatch_and_track(fc.name, args, run_execs)
                         if verbose:
-                            label = {"write_file": f"  write -> {args.get('path', '')}",
-                                     "read_file": f"  read <- {args.get('path', '')}"}
-                            print(label.get(fc.name, f"  {fc.name}"))
+                            self._log_tool_status(fc.name, args, result)
                         tool_responses.append(
                             types.Part.from_function_response(name=fc.name, response={"result": result})
                         )
@@ -481,6 +520,7 @@ class Session:
         self.total_out += run_out
         self.total_turns += turns
         self.total_cost += run_cost
+        self.script_executions.extend(run_execs)
 
         # Save session to disk
         self._save()
@@ -494,6 +534,7 @@ class Session:
             input_tokens=run_in, output_tokens=run_out,
             total_tokens=run_in + run_out, cost_usd=run_cost,
             duration_seconds=round(duration, 2),
+            script_executions=run_execs,
         )
         stats_path = Path(self.workspace) / "results" / "_last_run_stats.json"
         stats_path.parent.mkdir(parents=True, exist_ok=True)
@@ -504,6 +545,10 @@ class Session:
             print(f"Spark completed in {turns} turns | {duration:.1f}s")
             print(f"Tokens: {run_in:,} in + {run_out:,} out = {run_in + run_out:,}")
             print(f"Cost: ${run_cost:.6f} | Session total: ${self.total_cost:.6f}")
+            if run_execs:
+                total_script = sum(e["duration_seconds"] for e in run_execs)
+                ok = sum(1 for e in run_execs if e["success"])
+                print(f"Scripts: {len(run_execs)} ejecutados ({ok} exitosos) | {total_script:.1f}s total")
             print(f"{'='*60}\n")
             print(final_text)
 

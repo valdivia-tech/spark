@@ -71,6 +71,8 @@
   <div class="stat"><div class="num" id="s-turns">-</div><div class="label">Turnos</div></div>
   <div class="stat"><div class="num" id="s-cost">-</div><div class="label">Costo USD</div></div>
   <div class="stat"><div class="num" id="s-learned">-</div><div class="label">Aprendizajes</div></div>
+  <div class="stat"><div class="num" id="s-execs">-</div><div class="label">Ejecuciones</div></div>
+  <div class="stat"><div class="num" id="s-script-time">-</div><div class="label">Tiempo Scripts</div></div>
 </div>
 
 <section>
@@ -81,6 +83,11 @@
 <section>
   <h2 data-icon=">" onclick="toggle('activity')">Actividad por dia</h2>
   <div id="activity"><p class="empty">Cargando...</p></div>
+</section>
+
+<section>
+  <h2 data-icon=">" onclick="toggle('script-history')">Historial de Scripts</h2>
+  <div id="script-history" class="hidden"><p class="empty">Cargando...</p></div>
 </section>
 
 <section>
@@ -118,12 +125,16 @@ async function loadStats(sessions, learnedCount) {
   const totals = sessions.reduce((acc, s) => {
     acc.turns += s.total_turns || 0;
     acc.cost += s.total_cost_usd || 0;
+    acc.execs += s.script_exec_count || 0;
+    acc.scriptTime += s.script_exec_seconds || 0;
     return acc;
-  }, { turns: 0, cost: 0 });
+  }, { turns: 0, cost: 0, execs: 0, scriptTime: 0 });
   document.getElementById('s-sessions').textContent = sessions.length;
   document.getElementById('s-turns').textContent = totals.turns;
   document.getElementById('s-cost').textContent = '$' + totals.cost.toFixed(4);
   document.getElementById('s-learned').textContent = learnedCount;
+  document.getElementById('s-execs').textContent = totals.execs;
+  document.getElementById('s-script-time').textContent = totals.scriptTime.toFixed(1) + 's';
 }
 
 // --- Tasks ---
@@ -138,14 +149,19 @@ async function loadTasks() {
   // Most recent first
   tasks.sort((a, b) => b.created.localeCompare(a.created));
   let html = `<table>
-    <tr><th>ID</th><th>Sesion</th><th>Estado</th><th>Creada</th></tr>`;
+    <tr><th>ID</th><th>Sesion</th><th>Estado</th><th>Scripts</th><th>Tiempo Scripts</th><th>Creada</th></tr>`;
   for (const t of tasks) {
     const tagClass = t.status === 'completed' ? 'tag-ok' : t.status === 'failed' ? 'tag-fail' : 'tag-running';
     const label = t.status === 'completed' ? 'completada' : t.status === 'failed' ? 'fallida' : 'corriendo';
+    const sexecs = (t.stats && t.stats.script_executions) || [];
+    const scount = sexecs.length;
+    const stime = sexecs.reduce((a, e) => a + (e.duration_seconds || 0), 0);
     html += `<tr>
       <td><code>${esc(t.task_id)}</code></td>
       <td><code>${esc(t.session_id || '-')}</code></td>
       <td><span class="tag ${tagClass}">${label}</span></td>
+      <td class="num">${scount}</td>
+      <td class="num">${stime.toFixed(1)}s</td>
       <td>${esc(t.created.slice(11, 19))}</td>
     </tr>`;
   }
@@ -169,19 +185,23 @@ async function loadActivity() {
   for (const s of sessions) {
     const day = (s.created || '').slice(0, 10);
     if (!day) continue;
-    if (!days[day]) days[day] = { sessions: 0, turns: 0, cost: 0 };
+    if (!days[day]) days[day] = { sessions: 0, turns: 0, cost: 0, execs: 0, scriptTime: 0 };
     days[day].sessions++;
     days[day].turns += s.total_turns || 0;
     days[day].cost += s.total_cost_usd || 0;
+    days[day].execs += s.script_exec_count || 0;
+    days[day].scriptTime += s.script_exec_seconds || 0;
   }
   const sorted = Object.entries(days).sort((a, b) => b[0].localeCompare(a[0]));
   let html = `<table>
-    <tr><th>Dia</th><th>Sesiones</th><th>Turnos</th><th>Costo USD</th></tr>`;
+    <tr><th>Dia</th><th>Sesiones</th><th>Turnos</th><th>Ejecuciones</th><th>Tiempo Scripts</th><th>Costo USD</th></tr>`;
   for (const [day, d] of sorted) {
     html += `<tr>
       <td>${esc(day)}</td>
       <td class="num">${d.sessions}</td>
       <td class="num">${d.turns}</td>
+      <td class="num">${d.execs}</td>
+      <td class="num">${d.scriptTime.toFixed(1)}s</td>
       <td class="num">$${d.cost.toFixed(4)}</td>
     </tr>`;
   }
@@ -225,6 +245,34 @@ async function loadLearned() {
   return entries.length;
 }
 
+// --- Script History ---
+
+async function loadScriptHistory() {
+  const res = await fetch(`${API}/script-executions`);
+  const execs = await res.json();
+  if (!execs.length) {
+    document.getElementById('script-history').innerHTML = '<p class="empty">Sin ejecuciones aun.</p>';
+    return;
+  }
+  let html = `<table>
+    <tr><th>Timestamp</th><th>Sesion</th><th>Comando</th><th>Duracion</th><th>Estado</th></tr>`;
+  for (const e of execs) {
+    const ts = (e.timestamp || '').slice(0, 19).replace('T', ' ');
+    const cmd = esc((e.command || '').length > 80 ? e.command.slice(0, 80) + '...' : e.command || '');
+    const tagClass = e.success ? 'tag-ok' : 'tag-fail';
+    const label = e.success ? 'ok' : `exit ${e.exit_code}`;
+    html += `<tr>
+      <td>${esc(ts)}</td>
+      <td><code>${esc(e.session_id || '-')}</code></td>
+      <td><code>${cmd}</code></td>
+      <td class="num">${(e.duration_seconds || 0).toFixed(2)}s</td>
+      <td><span class="tag ${tagClass}">${esc(label)}</span></td>
+    </tr>`;
+  }
+  html += '</table>';
+  document.getElementById('script-history').innerHTML = html;
+}
+
 // --- Prompts ---
 
 async function loadPrompt() {
@@ -248,6 +296,7 @@ async function init() {
   ]);
   loadStats(sessions, learnedCount);
   loadTasks();
+  loadScriptHistory();
   loadPrompt();
   loadPowerFactory();
 }

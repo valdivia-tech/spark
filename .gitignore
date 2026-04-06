@@ -7,3 +7,4 @@ workspace/
 !.env.example
 CLAUDE.md
 **/CLAUDE.md
+projects/*.pfd

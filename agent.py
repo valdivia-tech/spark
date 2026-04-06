@@ -286,28 +286,31 @@ class Session:
             except Exception:
                 pass
 
-    def _log_tool_status(self, name, args, result):
-        """Print a clean one-line status for a tool call."""
+    def _log_before(self, name, args):
+        """Print what the agent is about to do."""
         if name == "write_file":
-            print(f"  Escribiendo {Path(args.get('path', '?')).name}")
+            print(f"  Escribiendo {Path(args.get('path', '?')).name}...")
         elif name == "read_file":
-            print(f"  Leyendo {Path(args.get('path', '?')).name}")
+            print(f"  Leyendo {Path(args.get('path', '?')).name}...")
         elif name == "execute_bash":
             cmd = args.get("command", "")
             script = next((t for t in cmd.split() if t.endswith(".py")), None)
-            label = script or "comando"
-            if "exit_code: 0" in result:
-                print(f"  Ejecutando {label}... OK")
-            elif "timed out" in result:
-                print(f"  Ejecutando {label}... timeout!")
-            elif "exit_code:" in result:
-                errs = [l.strip() for l in result.split("\n") if "Error" in l]
-                reason = errs[0][:100] if errs else "fallo"
-                print(f"  Ejecutando {label}... error: {reason}")
-            else:
-                print(f"  Ejecutando {label}...")
+            print(f"  Ejecutando {script or 'comando'}...", end=" ", flush=True)
         else:
             print(f"  {name}...")
+
+    def _log_after(self, name, result):
+        """Print the outcome after execution."""
+        if name == "execute_bash":
+            if "exit_code: 0" in result:
+                print("OK")
+            elif "timed out" in result:
+                print("timeout!")
+            elif "exit_code:" in result:
+                errs = [l.strip() for l in result.split("\n") if "Error" in l]
+                print(f"error: {errs[0][:100] if errs else 'fallo'}")
+            else:
+                print()
 
     def _dispatch_and_track(self, name, args, execs):
         """Dispatch a tool call and track execute_bash timing."""
@@ -401,10 +404,11 @@ class Session:
             has_error = False
             for fc in calls:
                 args = dict(fc.args) if fc.args else {}
-                result = self._dispatch_and_track(fc.name, args, run_execs)
-
                 if verbose:
-                    self._log_tool_status(fc.name, args, result)
+                    self._log_before(fc.name, args)
+                result = self._dispatch_and_track(fc.name, args, run_execs)
+                if verbose:
+                    self._log_after(fc.name, result)
 
                 # Track consecutive execution errors
                 if fc.name == "execute_bash" and "exit_code: 1" in result:
@@ -462,9 +466,11 @@ class Session:
                     tool_responses = []
                     for fc in calls:
                         args = dict(fc.args) if fc.args else {}
+                        if verbose:
+                            self._log_before(fc.name, args)
                         result = self._dispatch_and_track(fc.name, args, run_execs)
                         if verbose:
-                            self._log_tool_status(fc.name, args, result)
+                            self._log_after(fc.name, result)
                         tool_responses.append(
                             types.Part.from_function_response(name=fc.name, response={"result": result})
                         )
@@ -498,9 +504,11 @@ class Session:
                     tool_responses = []
                     for fc in calls:
                         args = dict(fc.args) if fc.args else {}
+                        if verbose:
+                            self._log_before(fc.name, args)
                         result = self._dispatch_and_track(fc.name, args, run_execs)
                         if verbose:
-                            self._log_tool_status(fc.name, args, result)
+                            self._log_after(fc.name, result)
                         tool_responses.append(
                             types.Part.from_function_response(name=fc.name, response={"result": result})
                         )

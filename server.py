@@ -80,6 +80,7 @@ def health() -> dict:
     pf_path = config.get("POWERFACTORY_PATH")
     return {
         "status": "ok",
+        "version": app.version,
         "powerfactory": bool(pf_path and Path(pf_path).exists()),
     }
 

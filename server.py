@@ -86,12 +86,12 @@ def health() -> dict:
 
 @app.get("/prompt")
 def get_prompt() -> PlainTextResponse:
-    return PlainTextResponse((PROMPTS_DIR / "system.md").read_text())
+    return PlainTextResponse((PROMPTS_DIR / "system.md").read_text(encoding="utf-8"))
 
 
 @app.get("/powerfactory")
 def get_powerfactory() -> PlainTextResponse:
-    return PlainTextResponse((PROMPTS_DIR / "powerfactory.md").read_text())
+    return PlainTextResponse((PROMPTS_DIR / "powerfactory.md").read_text(encoding="utf-8"))
 
 
 # --- Tasks ---
@@ -155,7 +155,7 @@ def list_sessions() -> list[dict]:
     sessions = []
     for f in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
-            data = json.loads(f.read_text())
+            data = json.loads(f.read_text(encoding="utf-8"))
             execs = data.get("script_executions", [])
             sessions.append({
                 "session_id": data.get("session_id", f.stem),
@@ -176,7 +176,7 @@ def get_session(session_id: str) -> dict:
     path = _safe_child(SESSIONS_DIR, session_id, ".json")
     if not path.exists():
         raise HTTPException(404, "Session not found")
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data.pop("history", None)
     return data
 
@@ -192,7 +192,7 @@ def list_script_executions() -> list[dict]:
     all_execs = []
     for f in SESSIONS_DIR.glob("*.json"):
         try:
-            data = json.loads(f.read_text())
+            data = json.loads(f.read_text(encoding="utf-8"))
             sid = data.get("session_id", f.stem)
             for e in data.get("script_executions", []):
                 all_execs.append({**e, "session_id": sid})
@@ -211,7 +211,7 @@ def list_learned() -> list[dict]:
     if not index.exists():
         return []
     entries = []
-    for line in index.read_text().splitlines():
+    for line in index.read_text(encoding="utf-8").splitlines():
         if not (line.startswith("|") and "`" in line):
             continue
         cols = [c.strip() for c in line.split("|")[1:-1]]
@@ -230,7 +230,7 @@ def get_learned(slug: str) -> PlainTextResponse:
     path = _safe_child(LEARNED_DIR, slug, ".md")
     if not path.exists():
         raise HTTPException(404, "Experience not found")
-    return PlainTextResponse(path.read_text())
+    return PlainTextResponse(path.read_text(encoding="utf-8"))
 
 
 # --- Entry point ---

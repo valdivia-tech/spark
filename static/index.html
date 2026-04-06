@@ -86,6 +86,11 @@
 </section>
 
 <section>
+  <h2 data-icon=">" onclick="toggle('results')">Resultados</h2>
+  <div id="results"><p class="empty">Cargando...</p></div>
+</section>
+
+<section>
   <h2 data-icon=">" onclick="toggle('script-history')">Historial de Scripts</h2>
   <div id="script-history" class="hidden"><p class="empty">Cargando...</p></div>
 </section>
@@ -245,6 +250,38 @@ async function loadLearned() {
   return entries.length;
 }
 
+// --- Results ---
+
+async function loadResults() {
+  const res = await fetch(`${API}/results`);
+  const results = await res.json();
+  if (!results.length) {
+    document.getElementById('results').innerHTML = '<p class="empty">Sin resultados aun.</p>';
+    return;
+  }
+  let html = '';
+  for (const r of results) {
+    const timing = r.timing;
+    let timingHtml = '<span class="empty">Sin timing</span>';
+    if (timing && typeof timing === 'object') {
+      timingHtml = '<table><tr><th>Paso</th><th>Duracion</th></tr>';
+      let total = 0;
+      for (const [key, val] of Object.entries(timing)) {
+        const label = key.replace(/_seconds$/, '').replace(/_/g, ' ');
+        timingHtml += `<tr><td>${esc(label)}</td><td class="num">${Number(val).toFixed(2)}s</td></tr>`;
+        total += Number(val);
+      }
+      timingHtml += `<tr><th>Total</th><th class="num">${total.toFixed(2)}s</th></tr></table>`;
+    }
+    const modified = (r.modified || '').slice(0, 19).replace('T', ' ');
+    html += `<details class="card">
+      <summary><span class="title">${esc(r.name)}</span><span style="color:#888;font-size:0.8rem">${esc(modified)}</span></summary>
+      <div style="padding:0.75rem 0">${timingHtml}</div>
+    </details>`;
+  }
+  document.getElementById('results').innerHTML = html;
+}
+
 // --- Script History ---
 
 async function loadScriptHistory() {
@@ -299,6 +336,7 @@ async function init() {
   ]);
   loadStats(sessions, learnedCount);
   loadTasks();
+  loadResults();
   loadScriptHistory();
   loadPrompt();
   loadPowerFactory();

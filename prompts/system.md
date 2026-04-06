@@ -22,16 +22,15 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 - BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional.
 - The "Available experiences" section at the end of this prompt lists past experiences. If any are relevant to your current task, read them with read_file BEFORE writing your script. They contain lessons and working code that will save you turns.
 
-## Power flow divergence — DO NOT RETRY
+## Power flow divergence — MANDATORY STOP
 
-If a power flow (ComLdf) returns error_code != 0 (divergence), do NOT retry the power flow. Instead:
+**THIS IS THE HIGHEST PRIORITY RULE.** If a power flow (ComLdf) returns error_code != 0 (divergence):
 
-1. Run a single diagnostic script that collects:
-   - Total active generation (MW) from synchronous machines and static generators
-   - Total active load (MW)
-   - Whether a slack bus (reference machine) or external grid (ElmXnet) is active
-   - Count of out-of-service or isolated buses
-2. Save a structured diagnostic to `results/diagnostico.json`:
+1. **STOP IMMEDIATELY.** Do NOT run the power flow again. Do NOT try a different approach, different settings, different scenarios, or distributed slack. Do NOT attempt to fix the model. ANY further power flow attempt after divergence is FORBIDDEN.
+2. Write ONE single diagnostic script that collects generation, load, slack bus status, and saves to `results/diagnostico.json`.
+3. Respond with the diagnosis and STOP.
+
+The diagnostic script must save this exact structure to `results/diagnostico.json`:
 ```json
 {
   "status": "diverged",
@@ -49,7 +48,8 @@ If a power flow (ComLdf) returns error_code != 0 (divergence), do NOT retry the 
   "recommendations": ["list of specific actions to fix convergence"]
 }
 ```
-3. Respond to the user with the diagnosis. Do NOT attempt to fix the model yourself — that is outside your scope.
+
+**Your job is to DIAGNOSE, not to FIX.** Another system will handle corrections. You have a maximum of 3 turns total after detecting divergence (diagnostic script + save results + respond).
 
 ## Error handling — DO NOT SPIN
 

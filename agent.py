@@ -106,7 +106,7 @@ def _truncate(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     return text[:half] + f"\n\n... [TRUNCATED {len(text) - max_chars} chars] ...\n\n" + text[-half:]
 
 
-def _execute_bash(command: str, workspace: str) -> str:
+def _execute_bash(command: str, workspace: str, extra_env: dict | None = None) -> str:
     try:
         # Strip comment lines — # is not valid in Windows cmd.exe
         lines = command.split("\n")
@@ -114,7 +114,8 @@ def _execute_bash(command: str, workspace: str) -> str:
         command = "\n".join(lines).strip()
         if not command:
             return "error: empty command after stripping comments"
-        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=SCRIPT_TIMEOUT, cwd=workspace)
+        env = {**os.environ, **(extra_env or {})}
+        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=SCRIPT_TIMEOUT, cwd=workspace, env=env)
         parts = []
         if r.stdout:
             parts.append(f"stdout:\n{_truncate(r.stdout)}")
@@ -146,9 +147,9 @@ def _write_file(path: str, content: str, workspace: str) -> str:
         return f"error: {e}"
 
 
-def _dispatch(name: str, args: dict, workspace: str) -> str:
+def _dispatch(name: str, args: dict, workspace: str, extra_env: dict | None = None) -> str:
     if name == "execute_bash":
-        return _execute_bash(args.get("command", ""), workspace)
+        return _execute_bash(args.get("command", ""), workspace, extra_env)
     if name == "read_file":
         return _read_file(args.get("path", ""), workspace)
     if name == "write_file":
@@ -225,11 +226,12 @@ SESSIONS_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")) / "sessions"
 class Session:
     """A persistent agent session. Maintains chat history across multiple prompts."""
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, extra_env: dict | None = None):
         self.model = config.get("GEMINI_MODEL", "gemini-3-flash-preview")
         self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
         self.max_turns = int(config.get("MAX_TURNS", "30"))
         self.max_cost_usd = float(config.get("MAX_COST_USD", "0.50"))
+        self.extra_env = extra_env or {}
 
         self.client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
         self.total_in = 0
@@ -322,7 +324,7 @@ class Session:
     def _dispatch_and_track(self, name, args, execs):
         """Dispatch a tool call and track execute_bash timing."""
         t0 = time.time() if name == "execute_bash" else None
-        result = _dispatch(name, args, self.workspace)
+        result = _dispatch(name, args, self.workspace, self.extra_env)
         # Save last successful .py script for accurate experience logging
         if name == "execute_bash" and "exit_code: 0" in result:
             cmd = args.get("command", "")

@@ -33,6 +33,7 @@ class TaskResponse(BaseModel):
     result: str | None = None
     error: str | None = None
     stats: dict | None = None
+    result_files: list[str] = []
     created: str
 
 
@@ -47,6 +48,7 @@ class _Task:
     result: str | None = None
     error: str | None = None
     stats: dict | None = None
+    result_files: list[str] = field(default_factory=list)
     logs: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -108,10 +110,18 @@ def _safe_child(base: Path, name: str, suffix: str = "") -> Path:
 
 
 def _run_task(task: _Task, prompt: str):
+    # Create task-specific results directory
+    task_results_dir = RESULTS_DIR / task.task_id
+    task_results_dir.mkdir(parents=True, exist_ok=True)
+    results_rel = str(task_results_dir.relative_to(Path(config.get("SPARK_WORKSPACE", "./workspace"))))
+
     def log_cb(msg: str):
         task.logs.append({"ts": datetime.now(timezone.utc).isoformat(), "msg": msg})
     try:
-        session = Session(task.session_id or None)
+        session = Session(
+            task.session_id or None,
+            extra_env={"SPARK_RESULTS_DIR": results_rel},
+        )
         task.session_id = session.session_id
         result = session.run(prompt, verbose=True, log_callback=log_cb)
         task.result = result
@@ -124,6 +134,12 @@ def _run_task(task: _Task, prompt: str):
             "total_cost_usd": round(session.total_cost, 6),
             "script_executions": session.script_executions,
         }
+        # Collect result files from task-specific directory
+        if task_results_dir.exists():
+            task.result_files = [
+                f.stem for f in sorted(task_results_dir.glob("*.json"))
+                if not f.name.startswith("_")
+            ]
     except Exception as e:
         task.error = str(e)
         task.status = "failed"
@@ -224,6 +240,18 @@ def get_result(name: str) -> dict:
     path = _safe_child(RESULTS_DIR, name, ".json")
     if not path.exists():
         raise HTTPException(404, "Result not found")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/results/{task_id}/{name}")
+def get_task_result(task_id: str, name: str) -> dict:
+    """Get a result file from a specific task's results directory."""
+    task_dir = _safe_child(RESULTS_DIR, task_id)
+    if not task_dir.is_dir():
+        raise HTTPException(404, "Task results not found")
+    path = _safe_child(task_dir, name, ".json")
+    if not path.exists():
+        raise HTTPException(404, f"Result '{name}' not found in task {task_id}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

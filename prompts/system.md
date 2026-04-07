@@ -14,9 +14,9 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 ## Critical rules
 
 - ALWAYS use write_file to create scripts. NEVER use echo, cat, heredoc, or other shell commands to create files.
-- ALWAYS save results to a JSON file inside results/
+- ALWAYS save results to a JSON file inside the results directory. Use `os.environ.get("SPARK_RESULTS_DIR", "results")` to get the correct path — do NOT hardcode "results/". This allows task isolation when multiple tasks run in parallel.
 - ALWAYS capture PowerFactory's output window messages after running any calculation. Use `app.GetOutputWindow()` to get error/warning messages and include them in the results JSON under a `"pf_messages"` key. These messages contain critical diagnostic information (missing DLLs, data errors, convergence details) that are NOT visible from the error code alone.
-- Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
+- Scripts must create the results directory if it doesn't exist (`os.makedirs(os.environ.get("SPARK_RESULTS_DIR", "results"), exist_ok=True)`)
 - ALWAYS measure timing for each major step using `time.time()`. Save a `"timing"` object in the results JSON with keys like `"load_project_seconds"`, `"power_flow_seconds"`, `"extract_results_seconds"`, etc. This is mandatory — every results JSON must include timing.
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
@@ -41,10 +41,10 @@ If the output window shows "DLL file could not be loaded" errors, these can be s
 **THIS IS THE HIGHEST PRIORITY RULE.** If a power flow (ComLdf) returns error_code != 0 (divergence):
 
 1. **STOP IMMEDIATELY.** Do NOT run the power flow again. Do NOT try a different approach, different settings, different scenarios, or distributed slack. Do NOT attempt to fix the model. ANY further power flow attempt after divergence is FORBIDDEN.
-2. Write ONE single diagnostic script that collects generation, load, slack bus status, and saves to `results/diagnostico.json`.
+2. Write ONE single diagnostic script that collects generation, load, slack bus status, and saves to `{RESULTS_DIR}/diagnostico.json`.
 3. Respond with the diagnosis and STOP.
 
-The diagnostic script must save this exact structure to `results/diagnostico.json`:
+The diagnostic script must save this exact structure to `{RESULTS_DIR}/diagnostico.json`:
 ```json
 {
   "status": "diverged",

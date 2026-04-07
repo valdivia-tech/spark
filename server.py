@@ -65,7 +65,7 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Spark", version="0.2.0", lifespan=_lifespan, redoc_url=None)
+app = FastAPI(title="Spark", version="0.2.1", lifespan=_lifespan, redoc_url=None)
 
 
 # --- UI + Health ---
@@ -81,10 +81,19 @@ def index():
 @app.get("/health")
 def health() -> dict:
     pf_path = config.get("POWERFACTORY_PATH")
+    pf_exists = bool(pf_path and Path(pf_path).exists())
+    pf_version = None
+    if pf_exists:
+        # Extract version from path (e.g. "PowerFactory 2024" → "2024")
+        for part in Path(pf_path).parts:
+            if "PowerFactory" in part:
+                pf_version = part.replace("DIgSILENT", "").strip()
+                break
     return {
         "status": "ok",
         "version": app.version,
-        "powerfactory": bool(pf_path and Path(pf_path).exists()),
+        "powerfactory": pf_exists,
+        "powerfactory_version": pf_version,
     }
 
 

@@ -279,13 +279,8 @@ class Session:
         return [types.Content(**entry) for entry in entries]
 
     def _cleanup_scripts(self):
-        """Remove .py scripts from workspace after each run."""
-        ws = Path(self.workspace)
-        for f in ws.glob("*.py"):
-            try:
-                f.unlink()
-            except Exception:
-                pass
+        """Keep scripts — they are needed for experience logging."""
+        pass
 
     def _emit(self, msg):
         """Send log message to stdout and optional callback."""

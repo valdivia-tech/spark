@@ -27,12 +27,15 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 
 CEN operational bases often reference DLL files for dynamic models (WECC controllers like REGC_A, REEC_A, etc.) that point to paths on CEN workstations. These DLLs are NOT available in the simulation environment. When running **static** calculations (load flow, short circuit), dynamic models are NOT needed.
 
-Before running any load flow, disable dynamic model errors by setting the load flow command to ignore them:
+Before running any load flow on CEN operational bases with dynamic models, try to disable DSL/DLL error handling:
 ```python
 ldf = app.GetFromStudyCase('ComLdf')
-# Set to ignore DSL/DLL errors for static calculations
-ldf.SetAttribute('iopt_errlf', 1)  # Continue on errors
+# Only set iopt_errlf if the attribute exists (not available in all project types)
+if ldf.HasAttribute('iopt_errlf'):
+    ldf.SetAttribute('iopt_errlf', 1)  # Continue on errors
 ```
+
+Note: `iopt_errlf` may not exist in simple projects without a Study Case. Always check with `HasAttribute` first.
 
 If the output window shows "DLL file could not be loaded" errors, these can be safely ignored for static load flow calculations. Include them in the results for reference but do not treat them as calculation failures.
 

@@ -15,12 +15,26 @@ Be efficient. Write the correct script on the first try. Don't read the JSON aft
 
 - ALWAYS use write_file to create scripts. NEVER use echo, cat, heredoc, or other shell commands to create files.
 - ALWAYS save results to a JSON file inside results/
+- ALWAYS capture PowerFactory's output window messages after running any calculation. Use `app.GetOutputWindow()` to get error/warning messages and include them in the results JSON under a `"pf_messages"` key. These messages contain critical diagnostic information (missing DLLs, data errors, convergence details) that are NOT visible from the error code alone.
 - Scripts must create results/ if it doesn't exist (`os.makedirs("results", exist_ok=True)`)
 - ALWAYS measure timing for each major step using `time.time()`. Save a `"timing"` object in the results JSON with keys like `"load_project_seconds"`, `"power_flow_seconds"`, `"extract_results_seconds"`, etc. This is mandatory — every results JSON must include timing.
 - In execute_bash, only run simple commands like `python script.py`. No comments (#), no multi-line shell scripts.
 - The environment may be Windows (cmd.exe) or Linux. Don't assume either — use Python for everything, shell only for running scripts.
 - BEFORE writing any PowerFactory script, you MUST read `../prompts/powerfactory.md` using read_file. This is NOT optional.
 - The "Available experiences" section at the end of this prompt lists past experiences. If any are relevant to your current task, read them with read_file BEFORE writing your script. They contain lessons and working code that will save you turns.
+
+## Handling DLL/dynamic model errors
+
+CEN operational bases often reference DLL files for dynamic models (WECC controllers like REGC_A, REEC_A, etc.) that point to paths on CEN workstations. These DLLs are NOT available in the simulation environment. When running **static** calculations (load flow, short circuit), dynamic models are NOT needed.
+
+Before running any load flow, disable dynamic model errors by setting the load flow command to ignore them:
+```python
+ldf = app.GetFromStudyCase('ComLdf')
+# Set to ignore DSL/DLL errors for static calculations
+ldf.SetAttribute('iopt_errlf', 1)  # Continue on errors
+```
+
+If the output window shows "DLL file could not be loaded" errors, these can be safely ignored for static load flow calculations. Include them in the results for reference but do not treat them as calculation failures.
 
 ## Power flow divergence — MANDATORY STOP
 

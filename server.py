@@ -236,7 +236,7 @@ def list_results() -> list[dict]:
 
 
 @app.get("/results/{name}")
-def get_result(name: str) -> dict:
+def get_result(name: str):
     path = _safe_child(RESULTS_DIR, name, ".json")
     if not path.exists():
         raise HTTPException(404, "Result not found")
@@ -244,7 +244,7 @@ def get_result(name: str) -> dict:
 
 
 @app.get("/results/{task_id}/{name}")
-def get_task_result(task_id: str, name: str) -> dict:
+def get_task_result(task_id: str, name: str):
     """Get a result file from a specific task's results directory."""
     task_dir = _safe_child(RESULTS_DIR, task_id)
     if not task_dir.is_dir():

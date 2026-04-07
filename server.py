@@ -65,7 +65,7 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Spark", version="0.1.0", lifespan=_lifespan, redoc_url=None)
+app = FastAPI(title="Spark", version="0.2.0", lifespan=_lifespan, redoc_url=None)
 
 
 # --- UI + Health ---

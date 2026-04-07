@@ -147,7 +147,7 @@ Tarea: "{original user prompt}"
 
 ## Script
 \```python
-{the final working script, cleaned up}
+{COPY THE EXACT SCRIPT THAT RAN SUCCESSFULLY — do NOT rewrite, clean up, or modify it in any way. Use read_file to read the .py file from the workspace and paste it VERBATIM. If you rewrite the script, it WILL break.}
 \```
 ```
 

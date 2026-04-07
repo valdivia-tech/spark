@@ -328,6 +328,15 @@ class Session:
         """Dispatch a tool call and track execute_bash timing."""
         t0 = time.time() if name == "execute_bash" else None
         result = _dispatch(name, args, self.workspace)
+        # Save last successful .py script for accurate experience logging
+        if name == "execute_bash" and "exit_code: 0" in result:
+            cmd = args.get("command", "")
+            for token in cmd.split():
+                if token.endswith(".py"):
+                    script_path = Path(self.workspace) / token
+                    if script_path.exists():
+                        self._last_successful_script = script_path.read_text(encoding="utf-8")
+                    break
         if t0 is not None:
             elapsed = round(time.time() - t0, 3)
             exit_code = -1

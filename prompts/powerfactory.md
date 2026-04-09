@@ -238,6 +238,12 @@ trafo.SetAttribute("nntap", 5)     # tap position
 # Line parameters
 line.GetAttribute("dline")         # length km
 line.GetAttribute("Inom")          # nominal current kA
+
+# Nominal data (read-only, for classification/reporting)
+gen.GetAttribute("sgn")            # nominal apparent power MVA
+gen.GetAttribute("ugn")            # nominal voltage kV
+gen.GetAttribute("cosn")           # nominal power factor
+load.GetAttribute("coslini")       # load power factor
 ```
 
 ## Safe attribute access
@@ -273,6 +279,97 @@ def safe_get(obj, attr, default=None):
 3. outserv=0 means IN service (inverted logic, careful)
 4. If power flow doesn't converge, report error_code and suggest adjustments
 5. Don't modify the original .pfd — work on the imported copy
+6. NEVER guess attribute names. Only use attributes documented in this file. If you need an attribute not listed here, use HasAttribute() to test if it exists before using it. Common non-existent attributes: "c:Pgen", "c:Pload", "c:niter" — these do NOT exist in PowerFactory.
+
+## System totals after power flow
+
+PowerFactory does NOT have a single attribute for total generation or total load.
+You MUST sum across individual elements. Do NOT invent attributes like "c:Pgen" or "c:Pload" — they do not exist.
+
+This is the proven production pattern (tested on CEN 2603 and other large models):
+
+```python
+# --- Generators: ElmSym (synchronous) + ElmGenstat (static: solar, wind, BESS) ---
+total_gen_mw = 0.0
+total_gen_mvar = 0.0
+
+for gen in app.GetCalcRelevantObjects("*.ElmSym"):
+    if gen.GetAttribute("outserv") == 0:
+        p = gen.GetAttribute("m:P:bus1")
+        q = gen.GetAttribute("m:Q:bus1")
+        total_gen_mw += (p if p is not None else 0)
+        total_gen_mvar += (q if q is not None else 0)
+
+for gen in app.GetCalcRelevantObjects("*.ElmGenstat"):
+    if gen.GetAttribute("outserv") == 0:
+        p = gen.GetAttribute("m:P:bus1")
+        q = gen.GetAttribute("m:Q:bus1")
+        total_gen_mw += (p if p is not None else 0)
+        total_gen_mvar += (q if q is not None else 0)
+
+# --- External grids (ElmXnet) — count separately ---
+total_ext_mw = 0.0
+total_ext_mvar = 0.0
+
+for xnet in app.GetCalcRelevantObjects("*.ElmXnet"):
+    if xnet.GetAttribute("outserv") == 0:
+        p = xnet.GetAttribute("m:P:bus1")
+        q = xnet.GetAttribute("m:Q:bus1")
+        total_ext_mw += (p if p is not None else 0)
+        total_ext_mvar += (q if q is not None else 0)
+
+# --- Loads (ElmLod) ---
+total_load_mw = 0.0
+total_load_mvar = 0.0
+
+for load in app.GetCalcRelevantObjects("*.ElmLod"):
+    if load.GetAttribute("outserv") == 0:
+        p = load.GetAttribute("m:P:bus1")
+        q = load.GetAttribute("m:Q:bus1")
+        total_load_mw += (p if p is not None else 0)
+        total_load_mvar += (q if q is not None else 0)
+
+# --- Summary ---
+total_losses_mw = total_gen_mw + total_ext_mw - abs(total_load_mw)
+total_losses_mvar = total_gen_mvar + total_ext_mvar - abs(total_load_mvar)
+
+summary = {
+    "total_generation_mw": round(total_gen_mw, 2),
+    "total_generation_mvar": round(total_gen_mvar, 2),
+    "total_load_mw": round(abs(total_load_mw), 2),
+    "total_load_mvar": round(abs(total_load_mvar), 2),
+    "total_losses_mw": round(abs(total_losses_mw), 2),
+    "total_losses_mvar": round(abs(total_losses_mvar), 2),
+    "external_grid_mw": round(total_ext_mw, 2),
+    "external_grid_mvar": round(total_ext_mvar, 2),
+}
+```
+
+IMPORTANT notes:
+- Load values from `m:P:bus1` come as NEGATIVE (consumption). Use `abs()` when reporting.
+- BESS charging also shows as negative generation in `m:P:bus1`.
+- Losses = generation + external_grid - abs(load). Expect 3-5% for the SEN.
+- Always use `(value if value is not None else 0)` to handle None returns safely.
+- Check `outserv == 0` BEFORE reading `m:P:bus1` — out-of-service elements have no results.
+
+## Power flow convergence info
+
+The `ComLdf` object does NOT have output attributes like "c:niter". To check convergence:
+
+```python
+ldf = app.GetFromStudyCase("ComLdf")
+error_code = ldf.Execute()  # 0=converged, 1=diverged, 2=other error
+
+# The iteration count is NOT directly accessible as an attribute.
+# To measure solver performance, use external timing:
+import time
+t0 = time.perf_counter()
+error_code = ldf.Execute()
+t1 = time.perf_counter()
+solver_time_sec = t1 - t0
+```
+
+Do NOT use `ldf.GetAttribute("c:niter")` — this attribute does not exist and will raise an error.
 
 ## Base adjustment procedure (when power flow doesn't converge)
 

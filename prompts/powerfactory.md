@@ -294,16 +294,16 @@ total_gen_mw = 0.0
 total_gen_mvar = 0.0
 
 for gen in app.GetCalcRelevantObjects("*.ElmSym"):
-    if gen.GetAttribute("outserv") == 0:
+    if gen.GetAttribute("outserv") == 0 and gen.HasAttribute("m:P:bus1"):
         p = gen.GetAttribute("m:P:bus1")
-        q = gen.GetAttribute("m:Q:bus1")
+        q = gen.GetAttribute("m:Q:bus1") if gen.HasAttribute("m:Q:bus1") else 0
         total_gen_mw += (p if p is not None else 0)
         total_gen_mvar += (q if q is not None else 0)
 
 for gen in app.GetCalcRelevantObjects("*.ElmGenstat"):
-    if gen.GetAttribute("outserv") == 0:
+    if gen.GetAttribute("outserv") == 0 and gen.HasAttribute("m:P:bus1"):
         p = gen.GetAttribute("m:P:bus1")
-        q = gen.GetAttribute("m:Q:bus1")
+        q = gen.GetAttribute("m:Q:bus1") if gen.HasAttribute("m:Q:bus1") else 0
         total_gen_mw += (p if p is not None else 0)
         total_gen_mvar += (q if q is not None else 0)
 
@@ -312,9 +312,9 @@ total_ext_mw = 0.0
 total_ext_mvar = 0.0
 
 for xnet in app.GetCalcRelevantObjects("*.ElmXnet"):
-    if xnet.GetAttribute("outserv") == 0:
+    if xnet.GetAttribute("outserv") == 0 and xnet.HasAttribute("m:P:bus1"):
         p = xnet.GetAttribute("m:P:bus1")
-        q = xnet.GetAttribute("m:Q:bus1")
+        q = xnet.GetAttribute("m:Q:bus1") if xnet.HasAttribute("m:Q:bus1") else 0
         total_ext_mw += (p if p is not None else 0)
         total_ext_mvar += (q if q is not None else 0)
 
@@ -323,9 +323,9 @@ total_load_mw = 0.0
 total_load_mvar = 0.0
 
 for load in app.GetCalcRelevantObjects("*.ElmLod"):
-    if load.GetAttribute("outserv") == 0:
+    if load.GetAttribute("outserv") == 0 and load.HasAttribute("m:P:bus1"):
         p = load.GetAttribute("m:P:bus1")
-        q = load.GetAttribute("m:Q:bus1")
+        q = load.GetAttribute("m:Q:bus1") if load.HasAttribute("m:Q:bus1") else 0
         total_load_mw += (p if p is not None else 0)
         total_load_mvar += (q if q is not None else 0)
 

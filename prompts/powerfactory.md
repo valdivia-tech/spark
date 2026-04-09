@@ -253,11 +253,30 @@ def safe_get(obj, attr, default=None):
     try:
         if obj.HasAttribute(attr):
             val = obj.GetAttribute(attr)
-            return val if val is not None else default
-    except Exception:
+            return float(val) if val is not None else default
+    except (TypeError, ValueError, Exception):
         pass
     return default
 ```
+
+## JSON serialization
+
+IMPORTANT: PowerFactory GetAttribute() can return DataObject types that are NOT JSON-serializable.
+ALWAYS convert values to float() before saving to JSON:
+
+```python
+import json
+
+# WRONG — will crash with TypeError
+result = {"voltage": bus.GetAttribute("m:u")}
+json.dumps(result)  # TypeError: Object of type DataObject is not JSON serializable
+
+# CORRECT — convert to float first
+result = {"voltage": float(bus.GetAttribute("m:u") or 0)}
+json.dumps(result)  # works
+```
+
+When building result dictionaries, always use `float(value or 0)` for numeric PowerFactory attributes.
 
 ## Element type patterns
 

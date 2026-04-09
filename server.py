@@ -261,7 +261,10 @@ def get_task_result(task_id: str, name: str):
     path = _safe_child(task_dir, name, ".json")
     if not path.exists():
         raise HTTPException(404, f"Result '{name}' not found in task {task_id}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raise HTTPException(422, f"Result '{name}' in task {task_id} contains invalid JSON")
 
 
 # --- Script executions ---

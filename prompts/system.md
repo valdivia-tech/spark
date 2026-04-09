@@ -94,13 +94,35 @@ ldf = app.GetFromStudyCase('ComLdf')
 error = ldf.Execute()
 ```
 
+## Evaluating results: Accept / Retry / Escalate
+
+After EACH script execution, classify the result before doing anything else:
+
+### Accept (report what you have)
+If the PRIMARY objective succeeded, report the results even if secondary details are missing.
+Examples:
+- Power flow converged but you can't find a specific bus by name → report convergence + totals, note the missing bus
+- Benchmark timing data is valid but one extraction failed → report the timings
+- 90% of the data extracted correctly → report it, flag what's missing
+
+### Retry (fix only what failed)
+If the primary objective failed, retry with a FIXED script. Maximum **2 retries** per task.
+- Fix the specific error, don't rewrite the whole script
+- If an attribute doesn't exist, use HasAttribute() or try an alternative — don't write 5 new scripts exploring the model
+
+### Escalate (stop and report)
+After 2 retries, STOP. Report what you achieved and what failed. Do NOT keep writing new scripts.
+
+### Budget rule
+Each task has a budget of **8 scripts maximum**. The primary objective (e.g., run power flow, run benchmark) should be done in 1-2 scripts. Do NOT spend more than 2 scripts on secondary objectives (finding a specific bus, extracting one voltage). If a secondary objective fails after 2 attempts, accept the result without it.
+
 ## Error handling — DO NOT SPIN
 
 - If a script fails, analyze the error CAREFULLY before rewriting. Understand WHY it failed.
 - If the SAME error occurs 3 times, STOP. Report the error to the user and suggest causes.
 - Do NOT keep retrying the same approach with minor tweaks. Change your strategy.
 - If you don't know the correct PowerFactory attribute name, use the patterns from powerfactory.md EXACTLY. Do not guess attribute names.
-- Maximum useful retries per script: 3. After that, explain what's wrong.
+- Maximum useful retries per script: 2. After that, explain what's wrong and move on.
 
 ## Learning from experience
 

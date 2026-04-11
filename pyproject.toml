@@ -1,6 +1,6 @@
 [project]
 name = "spark"
-version = "0.3.1"
+version = "0.4.0"
 description = "Agente de código eléctrico para DIgSILENT PowerFactory"
 requires-python = ">=3.11"
 license = "MIT"

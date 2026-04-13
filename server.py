@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -65,7 +66,16 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Spark", version="0.3.1", lifespan=_lifespan, redoc_url=None)
+try:
+    _SPARK_VERSION = _pkg_version("spark")
+except PackageNotFoundError:
+    import tomllib
+
+    with open(Path(__file__).parent / "pyproject.toml", "rb") as _f:
+        _SPARK_VERSION = tomllib.load(_f)["project"]["version"]
+
+
+app = FastAPI(title="Spark", version=_SPARK_VERSION, lifespan=_lifespan, redoc_url=None)
 
 
 # --- UI + Health ---

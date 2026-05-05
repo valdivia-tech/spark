@@ -104,6 +104,11 @@ def health() -> dict:
         "version": app.version,
         "powerfactory": pf_exists,
         "powerfactory_version": pf_version,
+        "limits": {
+            "max_turns": int(config.get("MAX_TURNS", "30")),
+            "max_cost_usd": float(config.get("MAX_COST_USD", "0.50")),
+            "max_wall_seconds": int(config.get("MAX_WALL_SECONDS", "900")),
+        },
     }
 
 

@@ -231,6 +231,7 @@ class Session:
         self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
         self.max_turns = int(config.get("MAX_TURNS", "30"))
         self.max_cost_usd = float(config.get("MAX_COST_USD", "0.50"))
+        self.max_wall_seconds = int(config.get("MAX_WALL_SECONDS", "900"))  # 15 min hard cap per task
         self.extra_env = extra_env or {}
 
         self.client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
@@ -415,6 +416,14 @@ class Session:
                 stopped_reason = "cost_limit"
                 break
 
+            # Check wall-clock limit — prevents zombie tasks when stuck investigating API limits
+            elapsed = time.time() - start
+            if elapsed >= self.max_wall_seconds:
+                if verbose:
+                    print(f"\n  [STOPPED] Wall-clock limit reached: {elapsed:.0f}s >= {self.max_wall_seconds}s")
+                stopped_reason = "wall_timeout"
+                break
+
             calls = _get_function_calls(response)
             if not calls:
                 break
@@ -507,7 +516,7 @@ class Session:
         if turns >= self.max_turns and stopped_reason is None:
             stopped_reason = "max_turns"
 
-        if stopped_reason in ("cost_limit", "max_turns"):
+        if stopped_reason in ("cost_limit", "max_turns", "wall_timeout"):
             if verbose:
                 print(f"\n  [SAVING FAILURE] Giving model a chance to save what it learned...")
             try:

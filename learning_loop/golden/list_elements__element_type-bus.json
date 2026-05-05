@@ -1,0 +1,80 @@
+{
+  "task": "list_elements",
+  "system": "small",
+  "params": {
+    "element_type": "bus"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "cristian",
+  "approved_at": "2026-05-04",
+  "note": "Terminal 1 / Terminal 2 may not be true buses but kept as-is per user",
+  "expected": {
+    "project": "Taller 2",
+    "element_type": "bus",
+    "count": 9,
+    "elements": [
+      {
+        "name": "S/E A 13.8 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 13.800000190734863
+      },
+      {
+        "name": "S/E A 110 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 110.0
+      },
+      {
+        "name": "S/E B 110 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 110.0
+      },
+      {
+        "name": "S/E C 110 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 110.0
+      },
+      {
+        "name": "S/E B 13.8 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 13.800000190734863
+      },
+      {
+        "name": "S/E C 13.8 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 13.800000190734863
+      },
+      {
+        "name": "S/E C2 13.8 kV",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 13.800000190734863
+      },
+      {
+        "name": "Terminal 1",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 110.0
+      },
+      {
+        "name": "Terminal 2",
+        "class": "ElmTerm",
+        "in_service": 1,
+        "nominal_voltage_kv": 13.800000190734863
+      }
+    ],
+    "timing": {
+      "load_project_seconds": 0.147,
+      "extract_results_seconds": 0.004,
+      "total_seconds": 36.909
+    },
+    "pf_messages": [
+      "Output captured. Use app.GetOutputWindow() manually if needed."
+    ]
+  }
+}

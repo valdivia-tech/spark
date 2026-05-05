@@ -1,0 +1,58 @@
+{
+  "task": "list_elements",
+  "system": "small",
+  "params": {
+    "element_type": "transformer"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Auto-approved by Claude (count=4, all elements have name field)",
+  "expected_count": 4,
+  "expected": {
+    "elements": [
+      {
+        "name": "TR1",
+        "type": "ElmTr2",
+        "in_service": true,
+        "nominal_mva": 0.0,
+        "hv_bus": "S/E A 110 kV",
+        "lv_bus": "S/E A 13.8 kV"
+      },
+      {
+        "name": "TR4",
+        "type": "ElmTr2",
+        "in_service": true,
+        "nominal_mva": 0.0,
+        "hv_bus": "Terminal 1",
+        "lv_bus": "S/E C 13.8 kV"
+      },
+      {
+        "name": "TR2",
+        "type": "ElmTr2",
+        "in_service": true,
+        "nominal_mva": 0.0,
+        "hv_bus": "S/E B 110 kV",
+        "lv_bus": "S/E B 13.8 kV"
+      },
+      {
+        "name": "TR3",
+        "type": "ElmTr2",
+        "in_service": true,
+        "nominal_mva": 0.0,
+        "hv_bus": "S/E C 110 kV",
+        "lv_bus": "S/E C2 13.8 kV"
+      }
+    ],
+    "pf_messages": [
+      "Project activated: Taller 2(4)",
+      "Element type: ElmTr2"
+    ],
+    "timing": {
+      "init_seconds": 36.543,
+      "load_project_seconds": 0.965,
+      "extract_results_seconds": 0.013,
+      "total_seconds": 37.521
+    }
+  }
+}

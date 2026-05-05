@@ -1,0 +1,39 @@
+{
+  "task": "list_elements",
+  "system": "small",
+  "params": {
+    "element_type": "generator"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Auto-approved by Claude (count=2, all elements have name field)",
+  "expected_count": 2,
+  "expected": {
+    "elements": [
+      {
+        "name": "PMG",
+        "type": "ElmSym",
+        "in_service": false,
+        "nominal_mva": 0.0,
+        "p_dispatch_mw": 5.0
+      },
+      {
+        "name": "Red Externa",
+        "type": "ElmXnet",
+        "in_service": true,
+        "nominal_mva": 0.0,
+        "p_dispatch_mw": 20.0
+      }
+    ],
+    "pf_messages": [
+      "Project activated and elements extracted successfully."
+    ],
+    "timing": {
+      "init_seconds": 36.67,
+      "load_project_seconds": 0.15,
+      "extract_results_seconds": 0.02,
+      "total_seconds": 36.84
+    }
+  }
+}

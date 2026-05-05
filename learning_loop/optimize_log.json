@@ -1,0 +1,82 @@
+{
+  "runs": [
+    {
+      "round": 1,
+      "task": "get_line_parameters",
+      "params": {
+        "line_names": null
+      },
+      "turns": 3,
+      "cost_usd": 0.031088,
+      "wall_seconds": 62.5,
+      "status": "completed",
+      "task_id": "c74ef5ca",
+      "timestamp": "2026-05-05T01:18:17+00:00"
+    },
+    {
+      "round": 1,
+      "task": "list_elements",
+      "params": {
+        "element_type": "bus"
+      },
+      "turns": null,
+      "cost_usd": null,
+      "wall_seconds": 908.7,
+      "status": "timeout",
+      "task_id": "7dc1557c",
+      "timestamp": "2026-05-05T01:33:25+00:00"
+    },
+    {
+      "round": 1,
+      "task": "list_elements",
+      "params": {
+        "element_type": "generator"
+      },
+      "turns": 24,
+      "cost_usd": 0.310854,
+      "wall_seconds": 237.8,
+      "status": "completed",
+      "task_id": "b0a230dd",
+      "timestamp": "2026-05-05T01:37:23+00:00"
+    },
+    {
+      "round": 1,
+      "task": "list_elements",
+      "params": {
+        "element_type": "line"
+      },
+      "turns": 26,
+      "cost_usd": 0.399943,
+      "wall_seconds": 371.9,
+      "status": "completed",
+      "task_id": "9fa2713f",
+      "timestamp": "2026-05-05T01:43:35+00:00"
+    },
+    {
+      "round": 1,
+      "task": "list_elements",
+      "params": {
+        "element_type": "load"
+      },
+      "turns": 29,
+      "cost_usd": 0.320362,
+      "wall_seconds": 299.9,
+      "status": "completed",
+      "task_id": "351ad82f",
+      "timestamp": "2026-05-05T01:48:35+00:00"
+    },
+    {
+      "round": 1,
+      "task": "list_elements",
+      "params": {
+        "element_type": "transformer"
+      },
+      "turns": 24,
+      "cost_usd": 0.223269,
+      "wall_seconds": 227.5,
+      "status": "completed",
+      "task_id": "3d31ae3a",
+      "timestamp": "2026-05-05T01:52:23+00:00"
+    }
+  ]
+}

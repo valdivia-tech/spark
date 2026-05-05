@@ -1,0 +1,34 @@
+{
+  "task": "modify_load",
+  "system": "small",
+  "params": {
+    "active_power_mw": 50.0
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 13,
+  "first_try_cost": 0.120325,
+  "expected": {
+    "project": "Taller 2(17)",
+    "load_modified": "Carga 1",
+    "previous_values": {
+      "name": "Carga 1",
+      "active_power_mw": 7.0,
+      "reactive_power_mvar": 2.0,
+      "scaling_factor": 1.0
+    },
+    "new_values": {
+      "name": "Carga 1",
+      "active_power_mw": 50.0,
+      "reactive_power_mvar": 2.0,
+      "scaling_factor": 1.0
+    },
+    "timing": {
+      "load_project_seconds": 37.89650297164917,
+      "modify_load_seconds": 0.0032379627227783203
+    },
+    "pf_messages": []
+  }
+}

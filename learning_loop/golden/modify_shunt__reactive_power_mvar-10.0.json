@@ -1,0 +1,36 @@
+{
+  "task": "modify_shunt",
+  "system": "small",
+  "params": {
+    "reactive_power_mvar": 10.0
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 30,
+  "first_try_cost": 0.475606,
+  "expected": {
+    "status": "success",
+    "project": "Taller 2(9)",
+    "shunt_modified": "Shunt_Modified",
+    "previous_values": {
+      "qcapn": 0.9599999785423279,
+      "ncapx": 2,
+      "ncapa": 1
+    },
+    "new_values": {
+      "qcapn": 0.9599999785423279,
+      "qshnm": null,
+      "ncapx": 3,
+      "ncapa": 1
+    },
+    "pf_messages": [
+      "PowerFactory.OutputWindow"
+    ],
+    "timing": {
+      "load_project_seconds": 37.74492788314819,
+      "modify_shunt_seconds": 0.011310338973999023
+    }
+  }
+}

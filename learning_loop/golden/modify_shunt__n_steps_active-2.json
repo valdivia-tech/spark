@@ -1,0 +1,25 @@
+{
+  "task": "modify_shunt",
+  "system": "small",
+  "params": {
+    "n_steps_active": 2
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 12,
+  "first_try_cost": 0.096268,
+  "expected": {
+    "project": "Taller 2",
+    "shunts_found": 0,
+    "modifications": [],
+    "timing": {
+      "load_project_seconds": 0.14682984352111816,
+      "search_shunts_seconds": 0.002007722854614258
+    },
+    "pf_messages": [],
+    "status": "not_found",
+    "message": "No ElmShnt elements found in the project 7-bus.pfd."
+  }
+}

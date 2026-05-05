@@ -1,0 +1,94 @@
+{
+  "task": "get_line_parameters",
+  "system": "small",
+  "params": {
+    "line_names": null
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "cristian",
+  "approved_at": "2026-05-04",
+  "tolerance": {
+    "r_pct": 0.01,
+    "x_pct": 0.01,
+    "length_km": 0.001
+  },
+  "expected": {
+    "project": "Taller 2",
+    "lines": [
+      {
+        "name": "Linea 1",
+        "type": "L1",
+        "length_km": 30.0,
+        "r1_ohm_per_km": 0.29787299036979675,
+        "x1_ohm_per_km": 0.3950290083885193,
+        "r0_ohm_per_km": 0.4427169859409332,
+        "x0_ohm_per_km": 1.4868760108947754,
+        "z1_total_ohm": 14.842459778427418,
+        "angle1_deg": 52.98175380506559,
+        "z0_total_ohm": 46.54158077755295,
+        "angle0_deg": 73.41911224671058,
+        "k0_factor": 0.7119017887946536
+      },
+      {
+        "name": "Linea 2",
+        "type": "L2",
+        "length_km": 30.0,
+        "r1_ohm_per_km": 0.29787299036979675,
+        "x1_ohm_per_km": 0.3950290083885193,
+        "r0_ohm_per_km": 0.4427169859409332,
+        "x0_ohm_per_km": 1.4868760108947754,
+        "z1_total_ohm": 14.842459778427418,
+        "angle1_deg": 52.98175380506559,
+        "z0_total_ohm": 46.54158077755295,
+        "angle0_deg": 73.41911224671058,
+        "k0_factor": 0.7119017887946536
+      },
+      {
+        "name": "Tramo 1",
+        "type": "Tr1",
+        "length_km": 0.0010000000474974513,
+        "r1_ohm_per_km": 0.29787299036979675,
+        "x1_ohm_per_km": 0.3950290083885193,
+        "r0_ohm_per_km": 0.4427169859409332,
+        "x0_ohm_per_km": 1.4868760108947754,
+        "z1_total_ohm": 0.0004947486827802142,
+        "angle1_deg": 52.98175380506559,
+        "z0_total_ohm": 0.0015513860996053139,
+        "angle0_deg": 73.41911224671058,
+        "k0_factor": 0.7119017887946537
+      },
+      {
+        "name": "Tramo 2",
+        "type": "Tr2",
+        "length_km": 0.0010000000474974513,
+        "r1_ohm_per_km": 0.29787299036979675,
+        "x1_ohm_per_km": 0.3950290083885193,
+        "r0_ohm_per_km": 0.4427169859409332,
+        "x0_ohm_per_km": 1.4868760108947754,
+        "z1_total_ohm": 0.0004947486827802142,
+        "angle1_deg": 52.98175380506559,
+        "z0_total_ohm": 0.0015513860996053139,
+        "angle0_deg": 73.41911224671058,
+        "k0_factor": 0.7119017887946537
+      },
+      {
+        "name": "Linea 3",
+        "type": "L3",
+        "length_km": 20.0,
+        "r1_ohm_per_km": 0.29787299036979675,
+        "x1_ohm_per_km": 0.3950290083885193,
+        "r0_ohm_per_km": 0.4427169859409332,
+        "x0_ohm_per_km": 1.4868760108947754,
+        "z1_total_ohm": 9.894973185618278,
+        "angle1_deg": 52.98175380506559,
+        "z0_total_ohm": 31.027720518368632,
+        "angle0_deg": 73.41911224671058,
+        "k0_factor": 0.7119017887946536
+      }
+    ],
+    "pf_messages": [],
+    "timing": {
+      "extraction_seconds": 0.0033576488494873047
+    }
+  }
+}

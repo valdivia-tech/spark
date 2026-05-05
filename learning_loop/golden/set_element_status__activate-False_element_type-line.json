@@ -1,0 +1,30 @@
+{
+  "task": "set_element_status",
+  "system": "small",
+  "params": {
+    "element_type": "line",
+    "activate": false
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 17,
+  "first_try_cost": 0.158923,
+  "expected": {
+    "project": "Taller 2(14)",
+    "element": {
+      "name": "Linea 2",
+      "type": "ElmLne",
+      "previous_outserv": 0,
+      "new_outserv": 1,
+      "success": true
+    },
+    "timing": {
+      "load_project_seconds": 0.14515399932861328,
+      "modify_element_seconds": 0.0020072460174560547,
+      "total_seconds": 31.80340051651001
+    },
+    "pf_messages": "PowerFactory.OutputWindow"
+  }
+}

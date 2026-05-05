@@ -1,0 +1,18 @@
+{
+  "task": "modify_transformer_connection",
+  "system": "7-bus",
+  "params": {
+    "lv_connection": "Y"
+  },
+  "pf_version": "2024-sp1",
+  "task_id": "be8ff874",
+  "session_id": "822072a7",
+  "status": "timeout",
+  "wall_seconds": 1805.3,
+  "stats": {},
+  "result_text": "",
+  "error": null,
+  "result_files": [],
+  "results_data": {},
+  "timestamp": "2026-05-05T00:37:28+00:00"
+}

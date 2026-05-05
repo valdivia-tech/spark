@@ -1,0 +1,84 @@
+{
+  "task": "run_short_circuit",
+  "system": "small",
+  "params": {
+    "target_bus": "S/E C 13.8 kV",
+    "fault_type": "three_phase",
+    "standard": "complete"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Bus fault \u2014 line intermediate faults broken in PF 2024 SP1 (see learned/7-bus-sc-line-failure.md)",
+  "tolerance": {
+    "ikss_pct": 2.0,
+    "voltage_pu": 0.01
+  },
+  "expected": {
+    "status": "success",
+    "error_code": 0,
+    "target_bus": "S/E C 13.8 kV",
+    "fault_results": {
+      "Ikss_kA": 6.3193980143668105,
+      "Ik_kA": 6.3193980143668105,
+      "ip_kA": 14.952738541046319,
+      "Skss_MVA": 151.04815647873002
+    },
+    "bus_voltages": {
+      "S/E A 13.8 kV": 0.9263413437130248,
+      "S/E A 110 kV": 0.5602043343891063,
+      "S/E B 110 kV": 0.4767439372177773,
+      "S/E C 110 kV": 0.3722816429401647,
+      "S/E B 13.8 kV": 0.47674393721711544,
+      "S/E C 13.8 kV": 0.0,
+      "S/E C2 13.8 kV": 0.37228164294412003,
+      "Terminal 1": 0.37227671164834647,
+      "Terminal 2": 0.0
+    },
+    "branch_contributions": [
+      {
+        "name": "Linea 1",
+        "type": "Line",
+        "Ikss_bus1_kA": 0.39639860817272876,
+        "Ikss_bus2_kA": 0.39639860817272876
+      },
+      {
+        "name": "Linea 2",
+        "type": "Line",
+        "Ikss_bus1_kA": 0.39639860817272876,
+        "Ikss_bus2_kA": 0.39639860817272876
+      },
+      {
+        "name": "Linea 3",
+        "type": "Line",
+        "Ikss_bus1_kA": 0.7927972163538979,
+        "Ikss_bus2_kA": 0.7927972163538979
+      },
+      {
+        "name": "Tramo 1",
+        "type": "Line",
+        "Ikss_bus1_kA": 0.7927972163709214,
+        "Ikss_bus2_kA": 0.7927972163709214
+      },
+      {
+        "name": "TR1",
+        "type": "Transformer",
+        "Ikss_hv_kA": 0.7927972163444603,
+        "Ikss_lv_kA": 6.319398013953703
+      },
+      {
+        "name": "TR4",
+        "type": "Transformer",
+        "Ikss_hv_kA": 0.7927972163794346,
+        "Ikss_lv_kA": 6.319398014232482
+      }
+    ],
+    "timing": {
+      "load_project_seconds": 0.13521933555603027,
+      "short_circuit_seconds": 1.6135051250457764
+    },
+    "pf_messages": [
+      "Output window captured"
+    ]
+  }
+}

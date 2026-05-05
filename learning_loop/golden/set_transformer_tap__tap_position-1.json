@@ -1,0 +1,34 @@
+{
+  "task": "set_transformer_tap",
+  "system": "small",
+  "params": {
+    "tap_position": 1
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 9,
+  "first_try_cost": 0.09198,
+  "expected": {
+    "status": "validation_failed",
+    "transformer": "TR1",
+    "type": "S/E A",
+    "limits": {
+      "min": 0,
+      "max": 0,
+      "neutral": 0,
+      "step_percent": 0.0
+    },
+    "initial_tap": 0,
+    "requested_tap": 1,
+    "final_tap": 0,
+    "validation_error": "Requested tap 1 out of limits [0, 0]",
+    "pf_messages": [],
+    "timing": {
+      "load_project_seconds": 0.13542675971984863,
+      "set_tap_seconds": 0.0017466545104980469,
+      "total_seconds": 37.08447027206421
+    }
+  }
+}

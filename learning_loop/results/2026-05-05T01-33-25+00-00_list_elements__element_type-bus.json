@@ -1,0 +1,18 @@
+{
+  "task": "list_elements",
+  "system": "7-bus",
+  "params": {
+    "element_type": "bus"
+  },
+  "pf_version": "2024-sp1",
+  "task_id": "7dc1557c",
+  "session_id": "98deb0cc",
+  "status": "timeout",
+  "wall_seconds": 908.7,
+  "stats": {},
+  "result_text": "",
+  "error": null,
+  "result_files": [],
+  "results_data": {},
+  "timestamp": "2026-05-05T01:33:25+00:00"
+}

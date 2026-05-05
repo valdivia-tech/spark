@@ -7,3 +7,6 @@ workspace/
 !.env.example
 CLAUDE.md
 **/CLAUDE.md
+
+# Learning loop transient logs (keep state files like progress.json, optimize_log.json, golden/*, results/*)
+learning_loop/*.log

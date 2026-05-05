@@ -1,0 +1,36 @@
+{
+  "task": "set_element_status",
+  "system": "small",
+  "params": {
+    "element_type": "generator",
+    "activate": false
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 12,
+  "first_try_cost": 0.098759,
+  "expected": {
+    "project": "Taller 2(16)",
+    "element": {
+      "name": "PMG",
+      "class": "ElmSym",
+      "previous_outserv": 1,
+      "new_outserv": 1,
+      "success": true
+    },
+    "all_generators": [
+      {
+        "name": "PMG",
+        "outserv": 1
+      }
+    ],
+    "timing": {
+      "load_project_seconds": 1.7007884979248047,
+      "modify_element_seconds": 0.002007007598876953,
+      "total_seconds": 31.77873682975769
+    },
+    "pf_messages": []
+  }
+}

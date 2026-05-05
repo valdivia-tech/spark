@@ -1,0 +1,29 @@
+{
+  "task": "modify_voltage_setpoint",
+  "system": "small",
+  "params": {
+    "element_type": "generator",
+    "voltage_setpoint_pu": 1.03
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 7,
+  "first_try_cost": 0.064369,
+  "expected": {
+    "element_name": "PMG",
+    "element_type": "ElmSym",
+    "previous_usetp_pu": 1.0,
+    "new_usetp_pu": 1.0299999713897705,
+    "pf_messages": [
+      "Voltage setpoint updated."
+    ],
+    "timing": {
+      "init_seconds": 33.75,
+      "load_project_seconds": 0.96,
+      "modify_seconds": 0.0,
+      "total_seconds": 34.71
+    }
+  }
+}

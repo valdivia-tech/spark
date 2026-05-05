@@ -1,0 +1,27 @@
+{
+  "task": "modify_voltage_setpoint",
+  "system": "small",
+  "params": {
+    "element_type": "external_grid",
+    "voltage_setpoint_pu": 1.0
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 3,
+  "first_try_cost": 0.027321,
+  "expected": {
+    "element_name": "Red Externa",
+    "element_type": "ElmXnet",
+    "previous_usetp_pu": 1.0,
+    "new_usetp_pu": 1.0,
+    "pf_messages": [],
+    "timing": {
+      "init_seconds": 32.171,
+      "load_project_seconds": 0.967,
+      "modify_seconds": 0.004,
+      "total_seconds": 33.142
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "task": "run_short_circuit",
+  "system": "small",
+  "params": {
+    "target_bus": "S/E A 13.8 kV",
+    "fault_type": "single_phase_ground",
+    "standard": "iec_60909"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Bus fault \u2014 line intermediate faults broken in PF 2024 SP1 (see learned/7-bus-sc-line-failure.md)",
+  "tolerance": {
+    "ikss_pct": 2.0,
+    "voltage_pu": 0.01
+  },
+  "expected": {
+    "timing": {
+      "load_project_seconds": 35.59052658081055,
+      "short_circuit_seconds": 1.8593761920928955,
+      "total_seconds": 37.45797777175903
+    },
+    "pf_messages": "PowerFactory.OutputWindow",
+    "error_code": 0,
+    "status": "success",
+    "fault_results": {
+      "target_bus": "S/E A 13.8 kV",
+      "fault_type": "SPGF",
+      "standard": "IEC 60909",
+      "Ikss_kA": 40.0,
+      "Ik_kA": 40.0,
+      "ip_kA": 98.7688,
+      "Skss_MVA": 956.0921
+    },
+    "bus_voltages_pu": {
+      "S/E A 13.8 kV": 0.0,
+      "S/E A 110 kV": 0.0,
+      "S/E B 110 kV": 0.0,
+      "S/E C 110 kV": 0.0,
+      "S/E B 13.8 kV": 0.0,
+      "S/E C 13.8 kV": 0.0,
+      "S/E C2 13.8 kV": 0.0,
+      "Terminal 1": 0.0,
+      "Terminal 2": 0.0
+    },
+    "branch_contributions": []
+  }
+}

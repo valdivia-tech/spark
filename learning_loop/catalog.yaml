@@ -1,0 +1,417 @@
+# DigSilent function catalog for Spark autonomous learning.
+#
+# Each entry is one atomic PowerFactory operation that Spark must learn to
+# perform first-try. Source of truth: don-nelson/digsilent-backend/app/services/digsilent/.
+#
+# Tiers run sequentially. Within a tier, tasks are independent — drive them in any order.
+# Each task is run twice: once on 7-bus (small, fast feedback) and once on the big system.
+
+systems:
+  small:
+    pfd: "projects/7-bus.pfd"
+    name: "7-bus"
+  big:
+    pfd: "projects/2603/2603-BD-OP-COORD-DMAP.pfd"
+    name: "2603-BD-OP-COORD"
+    notes: "IntScenario API bug — see prompts/learned/. Skip scenario-dependent tasks until that's fixed."
+
+# ---------------------------------------------------------------------------
+# Tier 0 — discovery. Spark needs this first to find element names for everything else.
+# ---------------------------------------------------------------------------
+tier_0:
+  - name: list_elements
+    module: elements
+    intent: "List all elements in the network, optionally filtered by type."
+    prompt: |
+      Write a PowerFactory Python script that lists all elements of a given type
+      (generator, load, line, transformer, bus). For each element return: name,
+      type, in_service status, and key parameters (e.g. nominal MVA for gens,
+      length for lines, from/to bus for branches). Print as JSON to stdout.
+    hints:
+      - "Type→class map: generator=ElmSym, load=ElmLod, line=ElmLne, transformer=ElmTr2, bus=ElmTerm."
+      - "Use app.GetCalcRelevantObjects('*.ElmXyz') to enumerate."
+      - "outserv attribute: 0=in service, 1=out of service."
+      - "Bus connection: line.bus1.cterm.loc_name (cubicle.terminal.name)."
+      - "Also static gens exist: '*.ElmGenstat'. External grids: '*.ElmXnet'."
+    test_params:
+      - {element_type: "bus"}
+      - {element_type: "line"}
+      - {element_type: "generator"}
+      - {element_type: "transformer"}
+      - {element_type: "load"}
+
+# ---------------------------------------------------------------------------
+# Tier 1 — fundamentos. Calculations and read-only inspections.
+# ---------------------------------------------------------------------------
+tier_1:
+  - name: run_power_flow
+    module: power_flow
+    intent: "Configure and run a balanced AC load flow, return bus voltages, branch loadings, totals."
+    prompt: |
+      Write a PowerFactory Python script that runs a balanced AC load flow on the
+      active study case. Configure: AC mode, automatic tap adjustment ON,
+      automatic shunt adjustment ON, balanced positive sequence, reactive limits ON.
+      Return JSON with: per-bus voltages (pu, kV, angle), per-line loading (%),
+      per-transformer loading, totals (gen_mw, load_mw, losses_mw), min/max voltage.
+    hints:
+      - "ldf = app.GetFromStudyCase('ComLdf'). If None, study_case.CreateObject('ComLdf', 'LoadFlow')."
+      - "ldf.iopt_net=0 (AC), iopt_at=1 (auto tap), iopt_asht=1 (auto shunt), iopt_sim=0 (balanced), iopt_lim=1 (Q limits)."
+      - "ldf.Execute() returns 0 on success, 1 on non-convergence, !=0 for other errors."
+      - "Bus voltages: bus.GetAttribute('m:u') pu, 'm:phiu' deg. Always check HasAttribute first."
+      - "PF 2024 SP1 quirk: 'm:U' returns PHASE-TO-NEUTRAL voltage. For line-to-line v_kv, multiply by sqrt(3). Verify by checking that v_kv ~ uknom on terminal (not uknom/sqrt(3))."
+      - "Loading: elem.GetAttribute('c:loading'). Power: 'm:P:bus1', 'm:Q:bus1'."
+      - "Losses = total_gen + ext_grid_import - total_load (in MW)."
+      - "REQUIRED: report v_kv as line-to-line. If extracting m:U directly, multiply by 1.7320508."
+    convergence_failures:
+      - "Disconnected elements / isolated subsystems"
+      - "Missing slack bus"
+      - "Unrealistic dispatch values"
+    test_params:
+      - {}  # default settings
+
+  - name: run_short_circuit
+    module: short_circuit
+    intent: "Run IEC 60909 short circuit at a target bus terminal. Returns fault currents and bus voltage drops."
+    prompt: |
+      Write a PowerFactory Python script that runs a short circuit analysis at a
+      specified BUS terminal. Configure ComShc with the chosen fault type and
+      standard, set shc.shcobj to the target bus (ElmTerm), execute, and return
+      fault currents (Ikss, Ik, ip in kA), per-bus voltage drops (pu), and
+      branch contributions to the fault.
+
+      IMPORTANT (PF 2024 SP1): Faults at intermediate line locations via EvtShc
+      do NOT populate m:Ikss attributes (verified bug, see learned/7-bus-sc-line-failure.md).
+      Always target a bus terminal directly via shc.shcobj.
+    hints:
+      - "Find target bus: bus = next(b for b in app.GetCalcRelevantObjects('*.ElmTerm') if b.loc_name == target_bus_name)."
+      - "shc = app.GetFromStudyCase('ComShc'). shc.shcobj = bus. shc.iopt_mde 0=IEC60909, 1=Complete, 2=ANSI."
+      - "Fault types via shc.iopt_shc: '3PSC' three-phase, '2PSC' two-phase, 'SPGF' single-phase-ground, '2PGF' two-phase-ground."
+      - "shc.Execute() returns 0 on success."
+      - "Read from bus AFTER execute: bus.GetAttribute('m:Ikss') (kA), 'm:ip' (kA peak), 'm:Sk' (MVA)."
+      - "Per-bus voltages: bus.GetAttribute('m:u') in pu — should drop to ~0 on faulted bus and partially on others."
+      - "Branch contributions: line.GetAttribute('m:Ikss:bus1') and 'm:Ikss:bus2' for current flowing into fault."
+      - "VERIFY ikss > 0.01 kA before reporting success. Zero current means the calc didn't produce results."
+    test_params:
+      - {target_bus: "S/E B 110 kV", fault_type: "three_phase", standard: "iec_60909"}
+      - {target_bus: "S/E A 13.8 kV", fault_type: "single_phase_ground", standard: "iec_60909"}
+      - {target_bus: "S/E C 13.8 kV", fault_type: "three_phase", standard: "complete"}
+
+  - name: get_line_parameters
+    module: elements
+    intent: "Extract impedance parameters (R1, X1, R0, X0, Z1, Z0, K0) for distance relay coordination."
+    prompt: |
+      Write a PowerFactory Python script that returns impedance parameters of all
+      lines (or a filtered list): R1/X1/R0/X0 per km from line type, plus total
+      Z1, Z0, angles, and K0 factor (Z0-Z1)/(3*Z1) using line length.
+    hints:
+      - "Line type: line.GetAttribute('typ_id') (a TypLne)."
+      - "Per-km params on TypLne: 'rline', 'xline', 'rline0', 'xline0' in Ohm/km."
+      - "Length: line.GetAttribute('dline') in km. Some models put R1/X1/R0/X0 directly on ElmLne too."
+      - "Z1_total = sqrt((R1*L)^2 + (X1*L)^2). K0 = (Z0_total - Z1_total) / (3*Z1_total)."
+    test_params:
+      - {line_names: null}  # all
+
+# ---------------------------------------------------------------------------
+# Tier 2 — modificaciones de elementos existentes (state changes, no creation).
+# ---------------------------------------------------------------------------
+tier_2:
+  - name: set_element_status
+    module: elements
+    intent: "Activate or deactivate a network element."
+    prompt: |
+      Write a PowerFactory Python script that sets an element to in-service or
+      out-of-service. Verify the change by reading back outserv. Return previous
+      and new status.
+    hints:
+      - "elem.outserv = 0 (in service) or 1 (out of service)."
+      - "Find element via GetCalcRelevantObjects with the right pattern + match loc_name."
+    test_params:
+      - {element_type: "line", activate: false}
+      - {element_type: "line", activate: true}
+      - {element_type: "generator", activate: false}
+
+  - name: modify_generator
+    module: elements
+    intent: "Change generator dispatch: P, Q, V setpoint, power factor."
+    prompt: |
+      Write a PowerFactory Python script that modifies dispatch parameters of a
+      generator (synchronous or static). Accept optional active_power_mw,
+      reactive_power_mvar, voltage_setpoint_pu, power_factor. Return previous
+      and new values for each.
+    hints:
+      - "Synchronous gens: ElmSym. Static gens: ElmGenstat. Both share these attrs."
+      - "P dispatch: 'pgini' (MW). Q dispatch: 'qgini' (Mvar)."
+      - "V setpoint: 'usetp' (pu). PF: 'cosn'. Control mode: 'av_mode' (0=V, 1=Q, 2=PF)."
+      - "Always SetAttribute, then verify with GetAttribute."
+    test_params:
+      - {active_power_mw: 100.0}
+      - {voltage_setpoint_pu: 1.02}
+      - {active_power_mw: 50.0, reactive_power_mvar: 20.0}
+
+  - name: modify_load
+    module: elements
+    intent: "Change load P, Q or scaling factor."
+    prompt: |
+      Write a PowerFactory Python script that modifies a load: active_power_mw,
+      reactive_power_mvar, or scaling_factor. Return previous and new values.
+    hints:
+      - "Load class: ElmLod. P: 'plini' (MW), Q: 'qlini' (Mvar), scale: 'scale0' (1.0=100%), PF: 'coslini'."
+    test_params:
+      - {active_power_mw: 50.0}
+      - {scaling_factor: 1.2}
+      - {active_power_mw: 30.0, reactive_power_mvar: 10.0}
+
+  - name: modify_voltage_setpoint
+    module: elements
+    intent: "Change voltage setpoint of a generator or external grid."
+    prompt: |
+      Write a PowerFactory Python script that sets the usetp attribute (pu) on a
+      generator or external grid. Return previous and new value.
+    hints:
+      - "Generator: ElmSym or ElmGenstat. External grid: ElmXnet."
+      - "Setpoint attribute: 'usetp' on all three classes."
+    test_params:
+      - {element_type: "generator", voltage_setpoint_pu: 1.03}
+      - {element_type: "external_grid", voltage_setpoint_pu: 1.00}
+
+  - name: modify_shunt
+    module: elements
+    intent: "Change shunt reactive power, total steps, or active steps."
+    prompt: |
+      Write a PowerFactory Python script that modifies an ElmShnt: reactive_power_mvar
+      (qcapn), n_steps (ncapx), n_steps_active (ncapa). Return previous and new values.
+    hints:
+      - "Shunt class: ElmShnt. Q: 'qcapn' (positive=capacitive). Total steps: 'ncapx'. Active steps: 'ncapa'."
+      - "Type: 'shtype' 0=cap, 1=reactor, 2=filter."
+    test_params:
+      - {reactive_power_mvar: 10.0}
+      - {n_steps_active: 2}
+
+  - name: set_transformer_tap
+    module: elements
+    intent: "Set tap position of a 2-winding transformer, validating against type limits."
+    prompt: |
+      Write a PowerFactory Python script that sets the nntap attribute on an ElmTr2.
+      Read tap limits from typ_id (ntpmn, ntpmx, nntap0, dutap), validate the
+      requested position is within limits, set it, verify by reading back.
+    hints:
+      - "Tap position attribute: 'nntap' (int) on ElmTr2."
+      - "From TypTr2: 'ntpmn' (min), 'ntpmx' (max), 'nntap0' (neutral), 'dutap' (% per tap)."
+      - "Always validate before SetAttribute — out-of-range tap can corrupt the model."
+    test_params:
+      - {tap_position: 0}
+      - {tap_position: 1}
+      - {tap_position: -1}
+
+  - name: modify_transformer_connection
+    module: elements
+    intent: "Change HV/LV winding connection (Y/YN/D) on a transformer type."
+    prompt: |
+      Write a PowerFactory Python script that modifies the winding connection
+      (HV side, LV side, or both) of a transformer's TypTr2.
+    hints:
+      - "Connections live on the TYPE (typ_id), not the element."
+      - "HV: 'nt2ag'. LV: 'nt2ph'. Mapping: Y=0, YN=1, D=2."
+    test_params:
+      - {hv_connection: "YN", lv_connection: "D"}
+      - {lv_connection: "Y"}
+
+# ---------------------------------------------------------------------------
+# Tier 3 — creación de elementos. Spark debe crear types (TypXxx) y elementos
+# (ElmXxx) dentro del ElmNet, y conectar via cubicles.
+# ---------------------------------------------------------------------------
+tier_3:
+  - name: add_generator
+    module: elements
+    intent: "Create a new generator (synchronous or static) connected to a bus."
+    prompt: |
+      Write a PowerFactory Python script that creates a new generator. Steps:
+      (1) find the target bus (ElmTerm), (2) create the generator type (TypSym
+      or TypGenstat) inside the Library folder, (3) create the element
+      (ElmSym/ElmGenstat) INSIDE the ElmNet (not the project root), (4) link
+      element.typ_id to the type, (5) create or reuse a StaCubic on the bus and
+      assign element.bus1, (6) set pgini/usetp, (7) ensure outserv=0.
+    hints:
+      - "Elements MUST live inside an ElmNet to be calculation-relevant. Find via project.GetContents('*.ElmNet', 1)."
+      - "Types live in the Library folder: project.GetContents('*.IntPrjfolder') and pick loc_name=='Library' or iopt_typ=='lib'."
+      - "Cubicle pattern: cub = bus.CreateObject('StaCubic', f'Cub_{name}'); element.SetAttribute('bus1', cub)."
+      - "TypSym attrs: sgn (MVA), ugn (kV), cosn (PF). Element attrs: pgini (MW), usetp (pu), av_mode."
+      - "Auto-graphics get drawn diagonally — call graphics.delete_element_graphics(element) if you don't want them."
+    test_params:
+      - {generator_type: "synchronous", rated_power_mva: 50, active_power_mw: 30, power_factor: 0.9, voltage_setpoint_pu: 1.0}
+      - {generator_type: "static", rated_power_mva: 20, active_power_mw: 15, power_factor: 0.95, voltage_setpoint_pu: 1.0}
+
+  - name: add_line
+    module: elements
+    intent: "Create a new line with TypLne between two buses."
+    prompt: |
+      Write a PowerFactory Python script that creates a new line. Steps: find
+      both buses, create TypLne in Library with rline/xline (and optional
+      rline0/xline0/sline), create ElmLne inside ElmNet, set typ_id and dline,
+      create one StaCubic on each bus and assign bus1/bus2.
+    hints:
+      - "TypLne attrs: 'rline','xline','rline0','xline0' (Ohm/km), 'sline' (rated current kA)."
+      - "ElmLne attrs: 'dline' (km), 'bus1','bus2' (StaCubic refs)."
+      - "Lines need TWO cubicles, one per terminal."
+    test_params:
+      - {length_km: 10, r1_ohm_per_km: 0.05, x1_ohm_per_km: 0.4, rated_current_ka: 1.0}
+
+  - name: add_transformer
+    module: elements
+    intent: "Create a 2-winding transformer between HV and LV buses."
+    prompt: |
+      Write a PowerFactory Python script that creates an ElmTr2. Create TypTr2
+      with strn/utrn_h/utrn_l/uktr/pcutr and connection codes (nt2ag, nt2ph),
+      create the element inside ElmNet, set typ_id, create one StaCubic on each
+      bus, assign bushv and buslv.
+    hints:
+      - "TypTr2 attrs: 'strn' (MVA), 'utrn_h'/'utrn_l' (kV), 'uktr' (uk%), 'pcutr' (kW)."
+      - "Element attrs: 'bushv','buslv' (StaCubic refs), 'nntap' (tap pos)."
+      - "Connections on TYPE: nt2ag (HV), nt2ph (LV) — Y=0, YN=1, D=2."
+    test_params:
+      - {rated_power_mva: 50, hv_voltage_kv: 110, lv_voltage_kv: 23, impedance_percent: 10.0, hv_connection: "YN", lv_connection: "D"}
+
+  - name: delete_element
+    module: elements
+    intent: "Delete a network element by name and type."
+    prompt: |
+      Write a PowerFactory Python script that finds an element (generator/line/
+      transformer) by name and deletes it via element.Delete().
+    hints:
+      - "For generators, search both ElmSym and ElmGenstat."
+      - "Delete() is destructive — there is no undo via the API."
+    test_params:
+      - {element_type: "line"}
+
+# ---------------------------------------------------------------------------
+# Tier 4 — protecciones. Skeletons — fill hints from protection.py docstrings
+# the first time we run these.
+# ---------------------------------------------------------------------------
+tier_4:
+  - name: add_overcurrent_relay
+    module: protection
+    intent: "Add an overcurrent relay (RelToc) on a line/transformer cubicle with TOC and IOC functions."
+    prompt: "Write a script that creates an overcurrent relay on a given branch with TOC pickup/curve and IOC pickup/delay."
+    hints_from_source: "See protection.py:47 — needs RelToc, RelFuse-like helpers, TypRel curve assignment."
+    test_params:
+      - {}
+
+  - name: add_directional_overcurrent_relay
+    module: protection
+    intent: "Add a directional overcurrent relay (67/67N) on a branch."
+    prompt: "Write a script that creates a directional overcurrent relay with directional element + TOC."
+    test_params: [{}]
+
+  - name: add_distance_relay
+    module: protection
+    intent: "Add a distance relay (21/21N) with mho or quadrilateral zones."
+    prompt: "Write a script that creates a distance relay with up to 3 zones, mho or quad characteristic."
+    test_params: [{}]
+
+  - name: add_differential_relay
+    module: protection
+    intent: "Add a differential relay (87) for transformer or line protection."
+    prompt: "Write a script that creates a differential relay with restraint and operate slopes."
+    test_params: [{}]
+
+  - name: add_voltage_relay
+    module: protection
+    intent: "Add a voltage relay (27/59) on a bus."
+    prompt: "Write a script that creates an under/over-voltage relay on a terminal."
+    test_params: [{}]
+
+  - name: add_frequency_relay
+    module: protection
+    intent: "Add a frequency relay (81U/81O) on a bus."
+    prompt: "Write a script that creates an under/over-frequency relay on a terminal."
+    test_params: [{}]
+
+  - name: get_relay_settings
+    module: protection
+    intent: "Read all settings of a relay (or all relays) into structured JSON."
+    prompt: "Write a script that returns settings of a named relay: TOC pickup/TD/curve, IOC pickup/delay, distance zones (R/X/T), etc."
+    test_params: [{}]
+
+  - name: modify_relay_settings
+    module: protection
+    intent: "Modify settings of an existing overcurrent relay."
+    prompt: "Write a script that modifies TOC pickup/TD/curve and IOC pickup/delay on a named relay."
+    test_params: [{}]
+
+  - name: modify_distance_relay
+    module: protection
+    intent: "Modify zone reach (R, X, time) on a distance relay."
+    prompt: "Write a script that modifies R/X reach and time delay for zones 1/2/3 of a distance relay."
+    test_params: [{}]
+
+  - name: analyze_distance_reach
+    module: protection
+    intent: "Compute the apparent impedance seen by a distance relay for a fault and check zone coverage."
+    prompt: "Write a script that runs faults at multiple line locations and reports which zone of the relay sees them."
+    test_params: [{}]
+
+  - name: generate_reach_table
+    module: protection
+    intent: "Build a coordination reach table for distance relays across a corridor."
+    prompt: "Write a script that produces a table of zone reach (Z1=80% line, Z2=line+50% next, Z3=...) for a relay set."
+    test_params: [{}]
+
+# ---------------------------------------------------------------------------
+# Tier 5 — instrument transformers. Skeletons.
+# ---------------------------------------------------------------------------
+tier_5:
+  - name: add_current_transformer
+    module: instrument_transformers
+    intent: "Add a CT (StaCt) on a cubicle with primary/secondary ratio and class."
+    prompt: "Write a script that creates a CT on a specified branch cubicle with given ratio (e.g. 600/5) and accuracy class."
+    test_params: [{}]
+
+  - name: add_voltage_transformer
+    module: instrument_transformers
+    intent: "Add a VT (StaVt) on a bus or cubicle."
+    prompt: "Write a script that creates a VT on a terminal or cubicle with given ratio (e.g. 110kV/110V)."
+    test_params: [{}]
+
+  - name: get_instrument_transformers
+    module: instrument_transformers
+    intent: "List all CTs and VTs in the project with their parameters."
+    prompt: "Write a script that returns all StaCt and StaVt: ratio, class, location."
+    test_params: [{}]
+
+# ---------------------------------------------------------------------------
+# Tier 6 — graphics. Most are helpers; only a few are user-facing.
+# ---------------------------------------------------------------------------
+tier_6:
+  - name: add_element_to_diagram
+    module: graphics
+    intent: "Add a graphic representation (IntGrf) of an existing element to the active diagram."
+    prompt: "Write a script that creates an IntGrf for a given element on the active GraphicsBoard, positioned near its connected bus."
+    test_params: [{}]
+
+  - name: delete_element_graphics
+    module: graphics
+    intent: "Delete all IntGrf objects associated with an element (cleanup)."
+    prompt: "Write a script that finds and deletes all graphics linked to a given element."
+    test_params: [{}]
+
+# ---------------------------------------------------------------------------
+# Tier 7 — coordination plots & reports. Heaviest functions.
+# ---------------------------------------------------------------------------
+tier_7:
+  - name: generate_rx_plot
+    module: rx_plot
+    intent: "Generate an R-X plot for a distance relay showing zones and line impedance."
+    prompt: "Write a script that produces R-X plot data: mho/quad zones, line impedance vector, fault points."
+    test_params: [{}]
+
+  - name: generate_tcc_plot
+    module: tcc_plot
+    intent: "Generate a Time-Current Coordination plot for overcurrent relay coordination."
+    prompt: "Write a script that produces TCC curve points for a set of overcurrent relays plus fault current arrows."
+    test_params: [{}]
+
+  - name: run_faults_for_coordination
+    module: tcc_plot
+    intent: "Sweep faults across a corridor and capture the current seen by each protection device."
+    prompt: "Write a script that runs faults at N points along a line and returns the current seen by each upstream relay."
+    test_params: [{}]

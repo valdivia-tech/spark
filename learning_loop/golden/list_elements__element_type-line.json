@@ -1,0 +1,65 @@
+{
+  "task": "list_elements",
+  "system": "small",
+  "params": {
+    "element_type": "line"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Auto-approved by Claude (count=5, all elements have name field)",
+  "expected_count": 5,
+  "expected": {
+    "elements": [
+      {
+        "name": "Linea 1",
+        "type": "ElmLne",
+        "in_service": true,
+        "length_km": 30.0,
+        "from_bus": "S/E A 110 kV",
+        "to_bus": "S/E B 110 kV"
+      },
+      {
+        "name": "Linea 2",
+        "type": "ElmLne",
+        "in_service": true,
+        "length_km": 30.0,
+        "from_bus": "S/E A 110 kV",
+        "to_bus": "S/E B 110 kV"
+      },
+      {
+        "name": "Tramo 1",
+        "type": "ElmLne",
+        "in_service": true,
+        "length_km": 0.0010000000474974513,
+        "from_bus": "Terminal 1",
+        "to_bus": "S/E C 110 kV"
+      },
+      {
+        "name": "Tramo 2",
+        "type": "ElmLne",
+        "in_service": true,
+        "length_km": 0.0010000000474974513,
+        "from_bus": "Terminal 2",
+        "to_bus": "S/E C 13.8 kV"
+      },
+      {
+        "name": "Linea 3",
+        "type": "ElmLne",
+        "in_service": true,
+        "length_km": 20.0,
+        "from_bus": "S/E B 110 kV",
+        "to_bus": "S/E C 110 kV"
+      }
+    ],
+    "pf_messages": [
+      "Output window captured but not parsed."
+    ],
+    "timing": {
+      "init_seconds": 36.51,
+      "load_project_seconds": 0.14,
+      "extract_results_seconds": 0.01,
+      "total_seconds": 36.67
+    }
+  }
+}

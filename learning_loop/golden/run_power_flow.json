@@ -1,0 +1,114 @@
+{
+  "task": "run_power_flow",
+  "system": "small",
+  "params": {},
+  "pf_version": "2024-sp1",
+  "approved_by": "cristian",
+  "approved_at": "2026-05-04",
+  "note": "v_kv now line-to-line (109.45 in 110 kV bus, 13.8 in 13.8 kV bus). PF 2024 SP1 m:U returns phase-neutral; multiplied by sqrt(3).",
+  "tolerance": {
+    "voltages_pu": 0.005,
+    "losses_mw": 0.05,
+    "totals_mw": 0.5,
+    "voltages_kv_pct": 0.5
+  },
+  "expected": {
+    "project": "Taller 2(12)",
+    "status": "converged",
+    "error_code": 0,
+    "pf_messages": "[\"info - PFD file has been successfully imported from 'C:\\\\Users\\\\cristian_valdivia\\\\spark\\\\projects\\\\7-bus.pfd'.  The following top-level objects have been created:\\n       Taller 2(12).IntPrj\", 'info - Activating Project Taller 2(12)...', 'info - Study Case Study Case activated.', 'info - Project Taller 2(12) activated.', \"info - Element 'Red Externa' is local reference in separated area of 'S/E A 13.8 kV'\", 'info - Calculating load flow...', 'info - -------------------------------------------------------------------------------------', 'info - Start Newton-Raphson Algorithm...', 'info - Load flow iteration: 0', 'info - Load flow iteration: 1', 'info - Load flow iteration: 2', 'info - Load flow iteration: 3', 'info - Newton-Raphson converged with 3 iterations.', 'info - Load flow calculation successful.', 'info - -------------------------------------------------------------------------------------\\n            Report of Control Condition for Relevant Controllers\\n       -------------------------------------------------------------------------------------', 'info - Control conditions for all controllers of interest are fulfilled.']",
+    "timing": {
+      "init_seconds": 37.41191387176514,
+      "load_project_seconds": 0.9909830093383789,
+      "power_flow_seconds": 1.5499536991119385,
+      "extract_results_seconds": 0.011320114135742188,
+      "total_seconds": 39.964170694351196
+    },
+    "buses": {
+      "S/E A 110 kV": {
+        "v_pu": 0.995,
+        "v_kv": 109.45,
+        "angle_deg": 27.97
+      },
+      "S/E A 13.8 kV": {
+        "v_pu": 1.0,
+        "v_kv": 13.8,
+        "angle_deg": 0.0
+      },
+      "S/E B 110 kV": {
+        "v_pu": 0.9884,
+        "v_kv": 108.73,
+        "angle_deg": 27.63
+      },
+      "S/E B 13.8 kV": {
+        "v_pu": 0.9832,
+        "v_kv": 13.57,
+        "angle_deg": 26.59
+      },
+      "S/E C 110 kV": {
+        "v_pu": 0.9837,
+        "v_kv": 108.21,
+        "angle_deg": 27.41
+      },
+      "S/E C 13.8 kV": {
+        "v_pu": 0.9785,
+        "v_kv": 13.5,
+        "angle_deg": -3.63
+      },
+      "S/E C2 13.8 kV": {
+        "v_pu": 0.9837,
+        "v_kv": 13.58,
+        "angle_deg": -2.59
+      },
+      "Terminal 1": {
+        "v_pu": 0.9837,
+        "v_kv": 108.21,
+        "angle_deg": 27.41
+      },
+      "Terminal 2": {
+        "v_pu": 0.9784,
+        "v_kv": 13.5,
+        "angle_deg": -3.63
+      }
+    },
+    "min_v_pu": 0.9784,
+    "max_v_pu": 1.0,
+    "lines": {
+      "Linea 1": {
+        "loading_pct": 3.85
+      },
+      "Linea 2": {
+        "loading_pct": 3.85
+      },
+      "Linea 3": {
+        "loading_pct": 3.91
+      },
+      "Tramo 1": {
+        "loading_pct": 3.91
+      },
+      "Tramo 2": {
+        "loading_pct": 31.13
+      }
+    },
+    "transformers": {
+      "TR1": {
+        "loading_pct": 35.7
+      },
+      "TR2": {
+        "loading_pct": 18.51
+      },
+      "TR3": {
+        "loading_pct": 0.0
+      },
+      "TR4": {
+        "loading_pct": 18.6
+      }
+    },
+    "totals": {
+      "gen_mw": 0.0,
+      "ext_grid_mw": 14.1,
+      "load_mw": 14.0,
+      "losses_mw": 0.1
+    }
+  }
+}

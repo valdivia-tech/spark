@@ -1,0 +1,40 @@
+{
+  "task": "list_elements",
+  "system": "small",
+  "params": {
+    "element_type": "load"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-04",
+  "note": "Auto-approved by Claude (count=2, all elements have name field)",
+  "expected_count": 2,
+  "expected": {
+    "element_type_requested": "load",
+    "elements": [
+      {
+        "name": "Carga 2",
+        "type": "ElmLod",
+        "in_service": true,
+        "p_mw": 7.0,
+        "q_mvar": 2.0
+      },
+      {
+        "name": "Carga 1",
+        "type": "ElmLod",
+        "in_service": true,
+        "p_mw": 7.0,
+        "q_mvar": 2.0
+      }
+    ],
+    "pf_messages": [
+      "Could not capture output window lines."
+    ],
+    "timing": {
+      "init_seconds": 30.99,
+      "load_project_seconds": 0.97,
+      "extract_results_seconds": 0.01,
+      "total_seconds": 31.98
+    }
+  }
+}

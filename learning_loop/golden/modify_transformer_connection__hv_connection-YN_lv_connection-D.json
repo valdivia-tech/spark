@@ -1,0 +1,38 @@
+{
+  "task": "modify_transformer_connection",
+  "system": "small",
+  "params": {
+    "hv_connection": "YN",
+    "lv_connection": "D"
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 7,
+  "first_try_cost": 0.070355,
+  "expected": {
+    "status": "success",
+    "transformer": "TR1",
+    "type": "S/E A",
+    "initial_connections": {
+      "hv": 1,
+      "lv": 3
+    },
+    "requested_connections": {
+      "hv": 1,
+      "lv": 2,
+      "hv_str": "YN",
+      "lv_str": "D"
+    },
+    "final_connections": {
+      "hv": 1,
+      "lv": 2
+    },
+    "pf_messages": [],
+    "timing": {
+      "load_project_seconds": 0.9759702682495117,
+      "modify_connection_seconds": 0.007769107818603516
+    }
+  }
+}

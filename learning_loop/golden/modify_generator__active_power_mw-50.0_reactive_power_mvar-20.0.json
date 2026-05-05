@@ -1,0 +1,42 @@
+{
+  "task": "modify_generator",
+  "system": "small",
+  "params": {
+    "active_power_mw": 50.0,
+    "reactive_power_mvar": 20.0
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 3,
+  "first_try_cost": 0.028555,
+  "expected": {
+    "status": "success",
+    "project": "Taller 2",
+    "data": {
+      "generator_name": "PMG",
+      "generator_type": "ElmSym",
+      "results": {
+        "active_power_mw": {
+          "attribute": "pgini",
+          "old_value": 5.0,
+          "new_value": 50.0
+        },
+        "reactive_power_mvar": {
+          "attribute": "qgini",
+          "old_value": 3.0,
+          "new_value": 20.0
+        }
+      }
+    },
+    "pf_messages": [
+      "Error or no output window available"
+    ],
+    "timing": {
+      "load_project_seconds": 0.1395435333251953,
+      "modify_generator_seconds": 0.0012655258178710938,
+      "total_seconds": 37.68859314918518
+    }
+  }
+}

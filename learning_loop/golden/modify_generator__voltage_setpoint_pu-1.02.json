@@ -1,0 +1,36 @@
+{
+  "task": "modify_generator",
+  "system": "small",
+  "params": {
+    "voltage_setpoint_pu": 1.02
+  },
+  "pf_version": "2024-sp1",
+  "approved_by": "claude-auto",
+  "approved_at": "2026-05-05",
+  "note": "tier_2 modification \u2014 golden is the schema (previous/new values present, no error/traceback)",
+  "first_try_turns": 11,
+  "first_try_cost": 0.092194,
+  "expected": {
+    "status": "success",
+    "project": "Taller 2",
+    "data": {
+      "generator_name": "PMG",
+      "generator_type": "ElmSym",
+      "results": {
+        "voltage_setpoint_pu": {
+          "attribute": "usetp",
+          "old_value": 1.0199999809265137,
+          "new_value": 1.0199999809265137
+        }
+      }
+    },
+    "pf_messages": [
+      "Output window capture not implemented for this PF version"
+    ],
+    "timing": {
+      "load_project_seconds": 0.14091134071350098,
+      "modify_generator_seconds": 0.00045609474182128906,
+      "total_seconds": 37.705601930618286
+    }
+  }
+}

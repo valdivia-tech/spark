@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 import config
-from agent import Session, SESSIONS_DIR, LEARNED_DIR, PROMPTS_DIR
+from agent import Session, SESSIONS_DIR, LEARNED_DIR, PROMPTS_DIR, _kill_process_tree
 
 
 # --- Models ---
@@ -29,7 +29,7 @@ class TaskRequest(BaseModel):
 
 class TaskResponse(BaseModel):
     task_id: str
-    status: Literal["running", "completed", "failed"]
+    status: Literal["running", "completed", "failed", "cancelled"]
     session_id: str
     result: str | None = None
     error: str | None = None
@@ -45,16 +45,29 @@ class TaskResponse(BaseModel):
 class _Task:
     task_id: str
     session_id: str
-    status: Literal["running", "completed", "failed"] = "running"
+    status: Literal["running", "completed", "failed", "cancelled"] = "running"
     result: str | None = None
     error: str | None = None
     stats: dict | None = None
     result_files: list[str] = field(default_factory=list)
     logs: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Cancellation plumbing — not serialised in TaskResponse (extras are ignored).
+    cancel_event: threading.Event = field(default_factory=threading.Event)
+    current_pid: int | None = None
 
 
 _tasks: dict[str, _Task] = {}
+
+
+# Fields on _Task that exist for plumbing only and must not be exposed in the
+# JSON response (Pydantic v2 ignores extras by default but we filter explicitly
+# to be future-proof against schema changes and to keep the API surface clean).
+_INTERNAL_FIELDS = {"logs", "cancel_event", "current_pid"}
+
+
+def _to_response(t: _Task) -> TaskResponse:
+    return TaskResponse(**{k: v for k, v in t.__dict__.items() if k not in _INTERNAL_FIELDS})
 
 
 # --- App ---
@@ -141,15 +154,24 @@ def _run_task(task: _Task, prompt: str):
 
     def log_cb(msg: str):
         task.logs.append({"ts": datetime.now(timezone.utc).isoformat(), "msg": msg})
+
+    def pid_cb(pid):
+        task.current_pid = pid
     try:
         session = Session(
             task.session_id or None,
             extra_env={"SPARK_RESULTS_DIR": results_rel},
+            cancel_event=task.cancel_event,
+            pid_callback=pid_cb,
         )
         task.session_id = session.session_id
         result = session.run(prompt, verbose=True, log_callback=log_cb)
         task.result = result
-        task.status = "completed"
+        # If the cancel flag was set during the run, surface that as the final status.
+        if task.cancel_event.is_set():
+            task.status = "cancelled"
+        else:
+            task.status = "completed"
         task.stats = {
             "model": session.model,
             "total_turns": session.total_turns,
@@ -174,20 +196,19 @@ def create_task(req: TaskRequest) -> TaskResponse:
     task = _Task(task_id=uuid.uuid4().hex[:8], session_id=req.session_id or "")
     _tasks[task.task_id] = task
     threading.Thread(target=_run_task, args=(task, req.prompt), daemon=True).start()
-    return TaskResponse(**task.__dict__)
+    return _to_response(task)
 
 
 @app.get("/tasks")
 def list_tasks() -> list[TaskResponse]:
-    return [TaskResponse(**t.__dict__) for t in _tasks.values()]
+    return [_to_response(t) for t in _tasks.values()]
 
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: str) -> TaskResponse:
     if task_id not in _tasks:
         raise HTTPException(404, "Task not found")
-    t = _tasks[task_id]
-    return TaskResponse(**{k: v for k, v in t.__dict__.items() if k != "logs"})
+    return _to_response(_tasks[task_id])
 
 
 @app.get("/tasks/{task_id}/logs")
@@ -195,6 +216,39 @@ def get_task_logs(task_id: str) -> list[dict]:
     if task_id not in _tasks:
         raise HTTPException(404, "Task not found")
     return _tasks[task_id].logs
+
+
+@app.post("/tasks/{task_id}/cancel", status_code=202)
+def cancel_task(task_id: str) -> TaskResponse:
+    """Force-cancel a running task: kill its current subprocess tree and signal
+    the agent loop to exit cleanly at its next iteration.
+
+    Idempotent: cancelling a task that already finished returns its current
+    state unchanged. The agent's failure-save hook still runs, so a [FALLIDO]
+    experience is logged even on user cancel.
+    """
+    if task_id not in _tasks:
+        raise HTTPException(404, "Task not found")
+    t = _tasks[task_id]
+    if t.status != "running":
+        return _to_response(t)
+
+    # 1) Signal the agent loop. If it's between iterations it'll catch this on
+    #    the next pass and exit through the failure-save path.
+    t.cancel_event.set()
+
+    # 2) Kill the currently-running subprocess tree, if any. This unblocks the
+    #    agent thread which is waiting on Popen.communicate(). The thread then
+    #    sees cancel_event set and returns "error: cancelled by user", and the
+    #    next loop iteration breaks with stopped_reason="cancelled".
+    pid = t.current_pid
+    if pid is not None:
+        try:
+            _kill_process_tree(pid)
+        except Exception:
+            pass
+
+    return _to_response(t)
 
 
 # --- Sessions ---

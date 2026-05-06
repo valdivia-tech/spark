@@ -7,6 +7,7 @@ import time
 import uuid
 import base64
 import logging
+import threading
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
@@ -106,7 +107,51 @@ def _truncate(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     return text[:half] + f"\n\n... [TRUNCATED {len(text) - max_chars} chars] ...\n\n" + text[-half:]
 
 
-def _execute_bash(command: str, workspace: str, extra_env: dict | None = None) -> str:
+def _kill_process_tree(pid: int) -> None:
+    """Kill a process and ALL its descendants.
+
+    On Windows with shell=True, subprocess.run spawns cmd.exe → python.exe.
+    Killing only the parent (cmd.exe) leaves python.exe orphaned and running
+    forever, which silently bypasses SCRIPT_TIMEOUT. This walks the tree.
+    """
+    try:
+        import psutil
+    except ImportError:
+        # Fallback: best-effort OS tools
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    capture_output=True, timeout=10,
+                )
+            else:
+                os.killpg(os.getpgid(pid), 9)
+        except Exception:
+            pass
+        return
+    try:
+        parent = psutil.Process(pid)
+        descendants = parent.children(recursive=True)
+        for child in descendants:
+            try:
+                child.kill()
+            except Exception:
+                pass
+        parent.kill()
+        psutil.wait_procs([parent, *descendants], timeout=5)
+    except psutil.NoSuchProcess:
+        pass
+    except Exception:
+        pass
+
+
+def _execute_bash(
+    command: str,
+    workspace: str,
+    extra_env: dict | None = None,
+    pid_callback=None,
+    cancel_event: threading.Event | None = None,
+) -> str:
     try:
         # Strip comment lines — # is not valid in Windows cmd.exe
         lines = command.split("\n")
@@ -115,16 +160,55 @@ def _execute_bash(command: str, workspace: str, extra_env: dict | None = None) -
         if not command:
             return "error: empty command after stripping comments"
         env = {**os.environ, **(extra_env or {})}
-        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=SCRIPT_TIMEOUT, cwd=workspace, env=env)
+
+        # Use Popen so we can capture the PID, kill the whole process tree on
+        # timeout, and respond to external cancel signals. subprocess.run with
+        # shell=True on Windows orphans the python.exe child when the timeout
+        # fires (it kills cmd.exe but not its descendants).
+        proc = subprocess.Popen(
+            command, shell=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd=workspace, env=env,
+        )
+        if pid_callback:
+            try:
+                pid_callback(proc.pid)
+            except Exception:
+                pass
+        try:
+            stdout, stderr = proc.communicate(timeout=SCRIPT_TIMEOUT)
+            returncode = proc.returncode
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(proc.pid)
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except Exception:
+                stdout, stderr = "", ""
+            if pid_callback:
+                try:
+                    pid_callback(None)
+                except Exception:
+                    pass
+            return f"error: command timed out after {SCRIPT_TIMEOUT}s"
+        finally:
+            if pid_callback:
+                try:
+                    pid_callback(None)
+                except Exception:
+                    pass
+
+        if cancel_event is not None and cancel_event.is_set():
+            # External cancel arrived while we were running — ensure tree is dead.
+            _kill_process_tree(proc.pid)
+            return "error: cancelled by user"
+
         parts = []
-        if r.stdout:
-            parts.append(f"stdout:\n{_truncate(r.stdout)}")
-        if r.stderr:
-            parts.append(f"stderr:\n{_truncate(r.stderr)}")
-        parts.append(f"exit_code: {r.returncode}")
+        if stdout:
+            parts.append(f"stdout:\n{_truncate(stdout)}")
+        if stderr:
+            parts.append(f"stderr:\n{_truncate(stderr)}")
+        parts.append(f"exit_code: {returncode}")
         return "\n".join(parts)
-    except subprocess.TimeoutExpired:
-        return f"error: command timed out after {SCRIPT_TIMEOUT}s"
     except Exception as e:
         return f"error: {e}"
 
@@ -147,9 +231,19 @@ def _write_file(path: str, content: str, workspace: str) -> str:
         return f"error: {e}"
 
 
-def _dispatch(name: str, args: dict, workspace: str, extra_env: dict | None = None) -> str:
+def _dispatch(
+    name: str,
+    args: dict,
+    workspace: str,
+    extra_env: dict | None = None,
+    pid_callback=None,
+    cancel_event: threading.Event | None = None,
+) -> str:
     if name == "execute_bash":
-        return _execute_bash(args.get("command", ""), workspace, extra_env)
+        return _execute_bash(
+            args.get("command", ""), workspace, extra_env,
+            pid_callback=pid_callback, cancel_event=cancel_event,
+        )
     if name == "read_file":
         return _read_file(args.get("path", ""), workspace)
     if name == "write_file":
@@ -226,13 +320,21 @@ SESSIONS_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")) / "sessions"
 class Session:
     """A persistent agent session. Maintains chat history across multiple prompts."""
 
-    def __init__(self, session_id: str | None = None, extra_env: dict | None = None):
+    def __init__(
+        self,
+        session_id: str | None = None,
+        extra_env: dict | None = None,
+        cancel_event: threading.Event | None = None,
+        pid_callback=None,
+    ):
         self.model = config.get("GEMINI_MODEL", "gemini-3-flash-preview")
         self.workspace = config.get("SPARK_WORKSPACE", "./workspace")
         self.max_turns = int(config.get("MAX_TURNS", "30"))
         self.max_cost_usd = float(config.get("MAX_COST_USD", "0.50"))
         self.max_wall_seconds = int(config.get("MAX_WALL_SECONDS", "900"))  # 15 min hard cap per task
         self.extra_env = extra_env or {}
+        self.cancel_event = cancel_event
+        self.pid_callback = pid_callback
 
         self.client = genai.Client(api_key=config.get("GOOGLE_API_KEY"))
         self.total_in = 0
@@ -325,7 +427,11 @@ class Session:
     def _dispatch_and_track(self, name, args, execs):
         """Dispatch a tool call and track execute_bash timing."""
         t0 = time.time() if name == "execute_bash" else None
-        result = _dispatch(name, args, self.workspace, self.extra_env)
+        result = _dispatch(
+            name, args, self.workspace, self.extra_env,
+            pid_callback=self.pid_callback,
+            cancel_event=self.cancel_event,
+        )
         # Save last successful .py script for accurate experience logging
         if name == "execute_bash" and "exit_code: 0" in result:
             cmd = args.get("command", "")
@@ -424,6 +530,13 @@ class Session:
                 stopped_reason = "wall_timeout"
                 break
 
+            # Check external cancel — set by POST /tasks/{id}/cancel
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                if verbose:
+                    print(f"\n  [STOPPED] Cancelled by user")
+                stopped_reason = "cancelled"
+                break
+
             calls = _get_function_calls(response)
             if not calls:
                 break
@@ -516,7 +629,7 @@ class Session:
         if turns >= self.max_turns and stopped_reason is None:
             stopped_reason = "max_turns"
 
-        if stopped_reason in ("cost_limit", "max_turns", "wall_timeout"):
+        if stopped_reason in ("cost_limit", "max_turns", "wall_timeout", "cancelled"):
             if verbose:
                 print(f"\n  [SAVING FAILURE] Giving model a chance to save what it learned...")
             try:

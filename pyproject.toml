@@ -1,6 +1,6 @@
 [project]
 name = "spark"
-version = "0.5.0"
+version = "0.5.1"
 description = "Agente de código eléctrico para DIgSILENT PowerFactory"
 requires-python = ">=3.11"
 license = "MIT"
@@ -9,6 +9,7 @@ authors = [
 ]
 dependencies = [
     "google-genai>=1.0.0",
+    "psutil>=5.9.0",
 ]
 
 [project.urls]

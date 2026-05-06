@@ -251,6 +251,61 @@ def cancel_task(task_id: str) -> TaskResponse:
     return _to_response(t)
 
 
+# --- Workspace inspection ---
+#
+# Exposes Spark's workspace (scripts, results, anything Spark wrote) so callers
+# can audit the actual code/data that ran. Useful for catching API gotchas
+# (`obj.m:loading` vs `obj.GetAttribute('m:loading')`) BEFORE the next iteration
+# and for general post-mortem of failures.
+
+WORKSPACE_DIR = Path(config.get("SPARK_WORKSPACE", "./workspace")).resolve()
+
+
+def _safe_workspace_path(rel_path: str) -> Path:
+    """Resolve a relative path inside the workspace, blocking traversal."""
+    target = (WORKSPACE_DIR / rel_path).resolve()
+    if not target.is_relative_to(WORKSPACE_DIR):
+        raise HTTPException(400, "Path escapes workspace")
+    return target
+
+
+@app.get("/workspace")
+def list_workspace_root() -> dict:
+    """List entries at the workspace root."""
+    if not WORKSPACE_DIR.exists():
+        return {"path": "", "entries": []}
+    entries = [
+        {"name": p.name, "type": "dir" if p.is_dir() else "file", "size": p.stat().st_size if p.is_file() else None}
+        for p in sorted(WORKSPACE_DIR.iterdir())
+    ]
+    return {"path": "", "entries": entries}
+
+
+@app.get("/workspace/{path:path}")
+def get_workspace_entry(path: str):
+    """Return a workspace file's content (plain text) or a directory listing.
+
+    Examples (assuming Spark workspace at ./workspace):
+        GET /workspace/extract_cen_2604.py     → script content
+        GET /workspace/results                 → directory listing
+        GET /workspace/results/<task>/<file>   → result file content
+    """
+    target = _safe_workspace_path(path)
+    if not target.exists():
+        raise HTTPException(404, "Not found")
+    if target.is_dir():
+        entries = [
+            {"name": p.name, "type": "dir" if p.is_dir() else "file", "size": p.stat().st_size if p.is_file() else None}
+            for p in sorted(target.iterdir())
+        ]
+        return {"path": path, "entries": entries}
+    try:
+        text = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(415, "Binary file — fetch directly if needed")
+    return PlainTextResponse(text)
+
+
 # --- Sessions ---
 
 

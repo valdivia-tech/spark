@@ -13,8 +13,9 @@
 | `sc-line-fault-success.md` | ✅ Cortocircuito en línea al 30% usando eventos y método Complete |
 | `7-bus-sc-line-failure.md` | ❌ [FALLIDO] Falla de extracción de corrientes en corto de línea (7-bus) |
 | `cen-2603-power-flow.md` | ⭐ Receta completa para flujo de potencia en BD 2603-OP-COORD-DMAP (10 escenarios validados, 15+ fallas documentadas) |
-| `cen-2603-n1-contingency.md` | Análisis N-1 en 500kV y220kV del SEN, scripts batch y lecciones |
-| `cen-2603-inventory.md` | Extracción de inventory de activos (líneas, trafos por nivel de tensión) |
+| `cen-2604-multi-scenario-pf.md` | ⭐ Multi-escenario sobre 2604 abril 2026: API gotchas (`m:P:bus1` vía GetAttribute, Boost.Python.ArgumentError) + zonas geográficas + discrepancias vs PDF CEN |
+| `cen-2603-n1-contingency.md` | Análisis N-1 en 500kV y 220kV del SEN, scripts batch y lecciones |
+| `cen-2603-inventory.md` | Extracción de inventario de activos (líneas, trafos por nivel de tensión) |
 | `cen-2603-benchmark.md` | Benchmark de rendimiento (25 flujos) en BD 2603 |
 | `error-4002-infrastructure.md` | ❌ Error 4002/7000 — falla de infraestructura PowerFactory, no del modelo |
 | `7-bus-power-flow.md` | Estrategia completa para 7-bus.pfd (proyecto simple sin Study Case) |

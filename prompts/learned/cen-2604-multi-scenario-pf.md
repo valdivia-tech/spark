@@ -1,0 +1,275 @@
+# Flujo de Potencia Multiescenario — CEN 2604-BD-OP-COORD-DMAP
+Fecha: 2026-05-22
+Tarea: "Ejecutar flujo de potencia en 10 escenarios para la BD 2604 operacional."
+
+## Lecciones aprendidas
+- **Mapeo de escenarios**: Los nombres de los escenarios en el script (ej. `laboral_diurno`) pueden no coincidir exactamente con los del proyecto (`Laboral Diurno`). Se implementó una normalización (remover espacios, guiones bajos y pasar a minúsculas) para asegurar el match.
+- **OutputWindow.GetContent() en PF 2026**: Pasar una lista vacía `[]` a `GetContent()` provoca un `ArgumentError`. En la versión 2026, `GetContent()` debe llamarse sin argumentos para obtener todos los mensajes.
+- **Robustez de Atributos**: Al extraer resultados de miles de elementos, es vital usar `float(val or 0)` para evitar errores de serialización JSON si PowerFactory devuelve `None` o un objeto no serializable.
+- **Convergencia**: La BD 2604 utiliza la misma receta que la 2603 (`iopt_pbal=4, iopt_init=1, iopt_errlf=1`) para asegurar convergencia en snapshots operacionales con DSLs complejos.
+
+## Script
+```python
+import sys, os, json, time
+
+# --- PowerFactory init ---
+pf_path = os.environ.get("POWERFACTORY_PATH", r"C:\Program Files\DIgSILENT\PowerFactory 2026 Preview\Python\3.14")
+if pf_path not in sys.path:
+    sys.path.insert(0, pf_path)
+pf_root = os.path.dirname(os.path.dirname(pf_path))
+os.environ['PATH'] = pf_root + os.pathsep + os.environ.get('PATH', '')
+import powerfactory
+app = powerfactory.GetApplicationExt(None, None)
+
+RESULTS_DIR = os.environ.get("SPARK_RESULTS_DIR", "results")
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+def safe_get(obj, attr, default=None):
+    try:
+        if obj.HasAttribute(attr):
+            val = obj.GetAttribute(attr)
+            if val is None: return default
+            if isinstance(val, (int, float)): return val
+            if hasattr(val, 'loc_name'): return val.loc_name
+            return str(val)
+    except:
+        pass
+    return default
+
+# --- Load project ---
+user = app.GetCurrentUser()
+pfd_path = os.path.abspath(os.path.join("..", "projects", "2604", "2604-BD-OP-COORD-DMAP.pfd"))
+pfd_filename = os.path.basename(pfd_path)
+
+cache_file = os.path.join(RESULTS_DIR, ".project_cache.json")
+cache = {}
+if os.path.exists(cache_file):
+    with open(cache_file) as f:
+        cache = json.load(f)
+
+project_name = cache.get(pfd_filename)
+if project_name:
+    existing = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+    if project_name not in existing:
+        project_name = None
+
+if not project_name:
+    projects_before = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+    imp = user.CreateObject('CompfdImport', 'ImportPfd')
+    imp.SetAttribute("e:g_file", pfd_path)
+    imp.g_target = user
+    imp.Execute()
+    imp.Delete()
+    projects_after = {p.loc_name for p in (user.GetContents("*.IntPrj") or [])}
+    new_projects = list(projects_after - projects_before)
+    if new_projects:
+        project_name = new_projects[0]
+        cache[pfd_filename] = project_name
+        with open(cache_file, "w") as f:
+            json.dump(cache, f, indent=2)
+    else:
+        raise RuntimeError(f"Import failed for {pfd_filename}")
+
+proj = None
+for p in (user.GetContents("*.IntPrj") or []):
+    if p.loc_name == project_name:
+        proj = p
+        break
+proj.Activate()
+
+# --- Find components ---
+study_case = None
+for sc in proj.GetContents("*.IntCase", 1):
+    if "Base SEN" in sc.loc_name:
+        study_case = sc
+        break
+
+if not study_case:
+    scs = proj.GetContents("*.IntCase", 1)
+    if scs: study_case = scs[0]
+
+all_scenarios = proj.GetContents("*.IntScenario", 1)
+
+target_scenario_names = [
+    "laboral_madrugada", "laboral_diurno", "laboral_vespertino",
+    "sabado_madrugada", "sabado_diurno", "sabado_vespertino",
+    "domingo_madrugada", "domingo_diurno", "domingo_vespertino",
+    "ernc_cc"
+]
+
+scenario_map = {}
+for s_name in target_scenario_names:
+    normalized_target = s_name.lower().replace("_", "")
+    for scn in all_scenarios:
+        normalized_scn = scn.loc_name.lower().replace("_", "").replace(" ", "")
+        if normalized_target == normalized_scn:
+            scenario_map[s_name] = scn
+            break
+
+# Fallback para variaciones
+if len(scenario_map) < len(target_scenario_names):
+    for s_name in target_scenario_names:
+        if s_name not in scenario_map:
+            target_part = s_name.split("_")[0]
+            for scn in all_scenarios:
+                if target_part in scn.loc_name.lower():
+                    if "_" in s_name:
+                        second_part = s_name.split("_")[1]
+                        if second_part in scn.loc_name.lower():
+                            scenario_map[s_name] = scn
+                            break
+
+# Extraction logic
+TECH_MAP = {
+    "TER": "CEN: TER", "GEO": "CEN: TER",
+    "HE": "CEN: HE", "HP": "CEN: HP",
+    "PFV": "CEN: PFV", "CSP": "CEN: PFV",
+    "PE": "CEN: PE",
+    "BESS": "CEN: BESS"
+}
+
+def classify_gen(name):
+    for prefix, tech in TECH_MAP.items():
+        if name.startswith(prefix):
+            return tech
+    return "CEN: OTRO"
+
+cross_scenario = []
+
+for s_name in target_scenario_names:
+    t_start = time.time()
+    scn_obj = scenario_map.get(s_name)
+    if not scn_obj: continue
+
+    study_case.Activate()
+    scn_obj.Activate()
+
+    ldf = app.GetFromStudyCase("ComLdf")
+    if ldf:
+        if ldf.HasAttribute("iopt_pbal"): ldf.SetAttribute("iopt_pbal", 4)
+        if ldf.HasAttribute("iopt_init"): ldf.SetAttribute("iopt_init", 1)
+        if ldf.HasAttribute("iopt_errlf"): ldf.SetAttribute("iopt_errlf", 1)
+        err = ldf.Execute()
+    else:
+        err = -1
+    
+    out_window = app.GetOutputWindow()
+    pf_messages = []
+    if out_window:
+        try:
+            msgs = out_window.GetContent()
+            if msgs:
+                pf_messages = [str(m) for m in msgs[-20:]]
+        except:
+            pass
+
+    buses_data = []
+    lines_data = []
+    gens_data = []
+    
+    gen_by_type = {}
+    total_gen_mw = 0.0
+    total_load_mw = 0.0
+    bess_mw = 0.0
+    
+    for b in app.GetCalcRelevantObjects("*.ElmTerm"):
+        v_pu = safe_get(b, "m:u", 0.0)
+        buses_data.append({
+            "loc_name": b.loc_name,
+            "v_nom_kv": safe_get(b, "uknom", 0.0),
+            "v_pu": round(float(v_pu or 0), 4),
+            "v_kv": round(float(safe_get(b, "m:U", 0.0) or 0), 3),
+            "ang_deg": round(float(safe_get(b, "m:phiu", 0.0) or 0), 2),
+            "zona": safe_get(b, "cpArea", "N/A")
+        })
+
+    for l in app.GetCalcRelevantObjects("*.ElmLne"):
+        p_mw = safe_get(l, "m:P:bus1", 0.0)
+        lines_data.append({
+            "loc_name": l.loc_name,
+            "loading_pct": round(float(safe_get(l, "c:loading", 0.0) or 0), 2),
+            "p_mw": round(float(p_mw or 0), 2),
+            "q_mvar": round(float(safe_get(l, "m:Q:bus1", 0.0) or 0), 2),
+            "bus1_name": safe_get(l, "bus1", ""),
+            "bus2_name": safe_get(l, "bus2", ""),
+            "v_nom_kv": safe_get(l, "uknom", 0.0),
+            "length_km": safe_get(l, "dline", 0.0),
+            "zona": safe_get(l, "cpArea", "N/A")
+        })
+
+    for g_cls in ["*.ElmSym", "*.ElmGenstat"]:
+        for g in app.GetCalcRelevantObjects(g_cls):
+            if g.outserv == 1: continue
+            p = safe_get(g, "m:P:bus1", 0.0)
+            q = safe_get(g, "m:Q:bus1", 0.0)
+            tech = classify_gen(g.loc_name)
+            p_val = float(p or 0)
+            total_gen_mw += p_val
+            gen_by_type[tech] = gen_by_type.get(tech, 0.0) + p_val
+            if "BESS" in tech: bess_mw += p_val
+            gens_data.append({
+                "loc_name": g.loc_name,
+                "pgini": round(p_val, 2),
+                "qgini": round(float(q or 0), 2),
+                "tipo": tech,
+                "zona": safe_get(g, "cpArea", "N/A"),
+                "clase": g_cls.replace("*.", "")
+            })
+
+    for ld in app.GetCalcRelevantObjects("*.ElmLod"):
+        if ld.outserv == 0:
+            total_load_mw += abs(float(safe_get(ld, "m:P:bus1", 0.0) or 0))
+
+    with open(os.path.join(RESULTS_DIR, f"todas_las_barras_{s_name}.json"), "w") as f:
+        json.dump(buses_data, f, indent=2)
+    with open(os.path.join(RESULTS_DIR, f"todas_las_lineas_{s_name}.json"), "w") as f:
+        json.dump(lines_data, f, indent=2)
+    with open(os.path.join(RESULTS_DIR, f"todos_los_generadores_{s_name}.json"), "w") as f:
+        json.dump(gens_data, f, indent=2)
+
+    top_lines = sorted(lines_data, key=lambda x: x["loading_pct"], reverse=True)[:5]
+    trafos_data = []
+    for t in app.GetCalcRelevantObjects("*.ElmTr2"):
+        trafos_data.append({
+            "loc_name": t.loc_name,
+            "loading_pct": round(float(safe_get(t, "c:loading", 0.0) or 0), 2),
+            "p_mw": round(float(safe_get(t, "m:P:bushv", 0.0) or 0), 2),
+            "zona": safe_get(t, "cpArea", "N/A")
+        })
+    top_trafos = sorted(trafos_data, key=lambda x: x["loading_pct"], reverse=True)[:5]
+    buses_out = [b for b in buses_data if b["v_pu"] < 0.95 or b["v_pu"] > 1.05]
+
+    if s_name == "laboral_diurno":
+        exec_report = {
+            "top_10_generadores": sorted(gens_data, key=lambda x: x["pgini"], reverse=True)[:10],
+            "top_10_lineas": sorted(lines_data, key=lambda x: x["loading_pct"], reverse=True)[:10],
+            "top_10_trafos": sorted(trafos_data, key=lambda x: x["loading_pct"], reverse=True)[:10],
+            "resumen_zona": {},
+            "barras_criticas": sorted(buses_out, key=lambda x: abs(1.0 - x["v_pu"]), reverse=True)[:20]
+        }
+        for g in gens_data:
+            z = str(g["zona"])
+            if z not in exec_report["resumen_zona"]: exec_report["resumen_zona"][z] = {"gen": 0.0, "load": 0.0}
+            exec_report["resumen_zona"][z]["gen"] += g["pgini"]
+        with open(os.path.join(RESULTS_DIR, "reporte_ejecutivo_laboral_diurno.json"), "w") as f:
+            json.dump(exec_report, f, indent=2)
+
+    cross_scenario.append({
+        "scenario": s_name,
+        "status": "converged" if err == 0 else "diverged",
+        "gen_total": round(total_gen_mw, 2),
+        "load_total": round(total_load_mw, 2),
+        "losses": round(total_gen_mw - total_load_mw, 2),
+        "gen_by_type": {k: round(v, 2) for k, v in gen_by_type.items()},
+        "top_5_loaded_lines": top_lines,
+        "top_5_loaded_trafos": top_trafos,
+        "buses_out_of_range_count": len(buses_out),
+        "bess_total_mw": round(bess_mw, 2),
+        "error_code": err,
+        "seconds": round(time.time() - t_start, 2),
+        "pf_messages": pf_messages
+    })
+
+with open(os.path.join(RESULTS_DIR, "cross_scenario_analysis.json"), "w") as f:
+    json.dump(cross_scenario, f, indent=2)
+```

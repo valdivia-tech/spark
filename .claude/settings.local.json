@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run:*)",
+      "Bash(ls -la \"C:/Users/cristian_valdivia/spark/workspace/\"*.py)",
+      "Bash(ls *.py)",
+      "Bash(rm -f *.py)",
+      "Bash(MAX_TURNS=8 MAX_COST_USD=0.15 uv run spark \"en 7-bus.pfd, haz un cortocircuito trifásico en la Linea 1 al 50% de su longitud y muestra las corrientes de falla en todas las barras\")",
+      "Bash(du -sh /c/Users/cristian_valdivia/*)",
+      "Bash(du -sh \"/c/Users/cristian_valdivia/AppData/Local/DIgSILENT/PowerFactory 2026 Preview\"/*)",
+      "Read(//c/Program Files/DIgSILENT//**)",
+      "Read(//c/Program Files/DIgSILENT/**)",
+      "Bash(uv python:*)",
+      "Bash(uv sync:*)"
+    ]
+  }
+}

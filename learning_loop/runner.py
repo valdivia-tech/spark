@@ -81,7 +81,16 @@ def build_prompt(task: dict, params: dict, system: dict, pf_version: str) -> str
     return "\n".join(parts)
 
 
-def submit_and_wait(spark_url: str, prompt: str, poll_interval: int = 10, max_wait: int = 900) -> dict:
+def submit_and_wait(spark_url: str, prompt: str, poll_interval: int = 10, max_wait: int = 1100) -> dict:
+    """Submit a task and poll until it reaches a terminal state.
+
+    max_wait is intentionally larger than Spark's MAX_WALL_SECONDS (default
+    900s) so Spark's own wall cap fires first and returns a terminal status
+    before we give up. If we DO time out anyway (Spark hung), we cancel the
+    task explicitly before returning — leaving zombie tasks running causes
+    the next task to run concurrently with the zombie, which crashes
+    PowerFactory (single-instance) with ExitError 7000.
+    """
     submit = http_post(f"{spark_url}/tasks", {"prompt": prompt})
     task_id = submit["task_id"]
     started = time.monotonic()
@@ -97,9 +106,23 @@ def submit_and_wait(spark_url: str, prompt: str, poll_interval: int = 10, max_wa
         if st != last_status:
             print(f"  [{task_id[:8]}] status={st}", flush=True)
             last_status = st
-        if st in ("completed", "failed"):
+        if st in ("completed", "failed", "cancelled"):
             return status
         if time.monotonic() - started > max_wait:
+            print(f"  [{task_id[:8]}] poll timeout — cancelling to prevent zombie", flush=True)
+            try:
+                http_post(f"{spark_url}/tasks/{task_id}/cancel", {}, timeout=15)
+            except Exception as e:
+                print(f"    cancel call failed: {e}", flush=True)
+            # Give Spark up to 30s to actually cancel before returning.
+            for _ in range(15):
+                time.sleep(2)
+                try:
+                    final = http_get(f"{spark_url}/tasks/{task_id}", timeout=15)
+                    if final.get("status") in ("completed", "failed", "cancelled"):
+                        return {**final, "status": final.get("status") or "timeout"}
+                except urllib.error.URLError:
+                    pass
             return {**status, "status": "timeout"}
         time.sleep(poll_interval)
 
@@ -256,6 +279,18 @@ def cmd_optimize(args):
                 print(f"STOP: cost cap reached (${spent:.2f})", flush=True)
                 _write_optimize_log(optimize_log, log)
                 return
+            # Reset PowerFactory state before every task to prevent the model
+            # state from previous tasks (modified gens/loads/shunts, accumulated
+            # study-case objects) from corrupting this run. Best-effort: if
+            # reset fails, log it but continue — the task may still succeed,
+            # and a successful task is better than no task.
+            try:
+                resp = http_post(f"{args.spark}/admin/reset-projects", {}, timeout=90)
+                deleted = resp.get("deleted") or []
+                if deleted:
+                    print(f"  reset: deleted {deleted}", flush=True)
+            except Exception as e:
+                print(f"  reset failed (continuing): {e}", flush=True)
             task = task_lookup[g["task"]]
             params = g.get("params") or {}
             print(f"  [round {round_num}] {g['task']} {params}", flush=True)

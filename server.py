@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import subprocess
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -336,6 +337,69 @@ def delete_workspace_entry(path: str) -> dict:
         return {"deleted": path, "type": "dir"}
     target.unlink()
     return {"deleted": path, "type": "file"}
+
+
+# --- Admin / state reset ---
+#
+# PowerFactory persists imported projects across Python subprocess invocations
+# (the user database lives in the PF process). Over a long catalog run, modified
+# generators, loads, shunts, etc. accumulate on the same imported project,
+# eventually putting PF into a state where new tasks hang or crash. This
+# endpoint nukes all imported IntPrj objects from the user, restoring the
+# baseline. The runner calls it between catalog tasks.
+
+_RESET_SCRIPT = '''
+import sys, os
+pf_path = os.environ.get("POWERFACTORY_PATH", r"C:\\\\Program Files\\\\DIgSILENT\\\\PowerFactory 2024 SP1\\\\Python\\\\3.12")
+if pf_path not in sys.path:
+    sys.path.insert(0, pf_path)
+pf_root = os.path.dirname(os.path.dirname(pf_path))
+os.environ['PATH'] = pf_root + os.pathsep + os.environ.get('PATH', '')
+import powerfactory
+try:
+    app = powerfactory.GetApplicationExt()
+except powerfactory.ExitError:
+    app = powerfactory.GetApplication()
+user = app.GetCurrentUser()
+deleted = []
+for prj in (user.GetContents("*.IntPrj") or []):
+    name = prj.loc_name
+    try:
+        prj.Delete()
+        deleted.append(name)
+    except Exception as e:
+        print(f"FAILED to delete {name}: {e}")
+print("DELETED:", deleted)
+'''
+
+
+@app.post("/admin/reset-projects")
+def reset_projects() -> dict:
+    """Delete all IntPrj objects from the PF user's database. Returns deleted list.
+
+    Synchronous and bypasses the agent loop. Used by the catalog runner between
+    tasks to prevent cumulative model corruption.
+    """
+    try:
+        proc = subprocess.run(
+            ["python", "-c", _RESET_SCRIPT],
+            cwd=str(WORKSPACE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "Reset script timed out (60s) — PowerFactory likely hung; restart Spark")
+    if proc.returncode != 0:
+        raise HTTPException(500, f"Reset failed (exit {proc.returncode}): stderr={proc.stderr[:500]}")
+    deleted = []
+    for line in proc.stdout.splitlines():
+        if line.startswith("DELETED:"):
+            try:
+                deleted = json.loads(line.split(":", 1)[1].strip().replace("'", '"'))
+            except Exception:
+                deleted = [line.split(":", 1)[1].strip()]
+    return {"deleted": deleted, "stdout": proc.stdout[-1000:]}
 
 
 # --- Sessions ---

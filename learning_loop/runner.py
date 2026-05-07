@@ -126,6 +126,15 @@ def run_one(spark_url: str, task: dict, params: dict, system: dict, pf_version: 
         if data is not None:
             fetched[fn] = data
 
+    # Detect Pro hiccups: agent returned without ever executing a script.
+    # Spark marks these "completed" because the model stopped emitting
+    # function calls, but no work was actually done. We override to
+    # "no_op_failure" so the catalog round doesn't conflate empty turns
+    # with real successes (and so optimize_log shows the regression).
+    spark_status = result.get("status")
+    if spark_status == "completed" and not stats.get("script_executions"):
+        spark_status = "no_op_failure"
+
     summary = {
         "task": task["name"],
         "system": system["name"],
@@ -133,7 +142,7 @@ def run_one(spark_url: str, task: dict, params: dict, system: dict, pf_version: 
         "pf_version": pf_version,
         "task_id": result.get("task_id"),
         "session_id": result.get("session_id"),
-        "status": result.get("status"),
+        "status": spark_status,
         "wall_seconds": round(elapsed, 1),
         "stats": stats,
         "result_text": (result.get("result") or "")[:2000],

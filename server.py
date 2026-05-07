@@ -1,6 +1,7 @@
 """Spark HTTP server — wraps the agent for programmatic access."""
 
 import json
+import shutil
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -304,6 +305,27 @@ def get_workspace_entry(path: str):
     except UnicodeDecodeError:
         raise HTTPException(415, "Binary file — fetch directly if needed")
     return PlainTextResponse(text)
+
+
+@app.delete("/workspace/{path:path}")
+def delete_workspace_entry(path: str) -> dict:
+    """Delete a workspace file or directory (recursive for dirs).
+
+    Used for housekeeping when stale scripts/results from prior sessions
+    pollute the workspace and cause the agent to read the wrong files.
+    Path traversal is blocked by `_safe_workspace_path`. Refuses to delete
+    the workspace root itself.
+    """
+    target = _safe_workspace_path(path)
+    if target == WORKSPACE_DIR:
+        raise HTTPException(400, "Refusing to delete workspace root")
+    if not target.exists():
+        raise HTTPException(404, "Not found")
+    if target.is_dir():
+        shutil.rmtree(target)
+        return {"deleted": path, "type": "dir"}
+    target.unlink()
+    return {"deleted": path, "type": "file"}
 
 
 # --- Sessions ---

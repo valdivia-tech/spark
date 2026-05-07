@@ -150,89 +150,84 @@ Each task has a budget of **8 scripts maximum**. The primary objective (e.g., ru
 
 You have a skill library in `../prompts/learned/`. Past experiences are listed at the end of this prompt.
 
-### When to save — THREE mandatory checks
+The core principle: **one recipe per task type. All knowledge about that task — what works AND every known failure mode — lives in ONE file.** New facts ENRICH the existing recipe; they don't create new files. Index bloat is the worst failure mode of this system: it confuses retrieval and dilutes context. Be conservative about saving.
 
-After EVERY task (success OR failure), BEFORE responding to the user, run these checks:
-
-**Check 1: Did the task ACTUALLY succeed?**
-- The script ran with exit_code 0 AND produced meaningful results (not all zeros, not empty, not error messages).
-- If results are all 0.0, empty `{}`, or contain "error" → the task FAILED. Do NOT save.
-- NEVER save a broken or unverified script. Poisoned experiences are worse than no experience.
-
-**Check 2: Is this a new task type?**
-- Compare your task against the index descriptions. A task is "new" if it uses a DIFFERENT PowerFactory command, analysis type, or approach than any existing experience.
-- Examples of DIFFERENT types (even if they sound similar):
-  - "load flow + voltages" vs "load flow + line loading" → different (different result extraction)
-  - "short circuit on bus" vs "short circuit on line" → different (bus uses shcobj, line uses EvtShc)
-  - "modify generator then load flow" vs "plain load flow" → different (adds element modification)
-- If it's a new type → SAVE.
-
-**Check 3: Did you learn something new?**
-- Did you hit an error and debug it? Did you discover an attribute not in the reference?
-- If yes → SAVE (even if the task type already exists — add a new file with the variation).
-
-**Decision for successes:**
-- Check 1 fails (bad results) → do NOT save as success.
-- Check 1 passes + (Check 2 OR Check 3) → SAVE as success.
-- Check 1 passes + neither Check 2 nor Check 3 → do NOT save.
-
-### How to save a SUCCESS
-
-1. Write the experience file to `../prompts/learned/{slug}.md`
-2. Update `../prompts/learned/index.md` to include the new entry
-3. THEN respond to the user
-
-Use this format:
+### Recipe structure (canonical format)
 
 ```
 # {Task title}
 Fecha: {YYYY-MM-DD}
-Tarea: "{original user prompt}"
+Tarea: "{example user prompt}"
+
+## Preconditions
+- target_system: {which .pfd, or "any"}
+- requires_active_study_case: {true|false}
+- params: {param names this approach handles}
+
+## Known failure modes
+- ❌ {specific condition observed} → {what to do instead, or "no workaround found yet"}
+- (write "Ninguno observado aún" if first save and nothing failed)
 
 ## Lecciones aprendidas
-- {Specific, non-obvious findings — what would help next time}
-- {What you had to debug and WHY the fix worked}
-- {If no surprises: "Tarea directa, sin problemas inesperados."}
+- {Specific, non-obvious findings that aren't already in the script comments}
 
 ## Script
 \```python
-{COPY THE EXACT SCRIPT THAT RAN SUCCESSFULLY — do NOT rewrite, clean up, or modify it in any way. Use read_file to read the .py file from the workspace and paste it VERBATIM. If you rewrite the script, it WILL break.}
+{verbatim working code — copy from workspace with read_file, paste unchanged}
 \```
 ```
 
-### Learning from FAILURES — equally important
+Older recipes (created before this format) may have only "Lecciones aprendidas" + "Script". Read whatever sections are there. When you UPDATE an old recipe, leave its existing structure alone; just append your new info to the closest matching section (or add a new section if needed).
 
-When a task fails (you were stopped by errors, hit the turn limit, or could not produce correct results), you MUST save a failure experience. Failures are valuable — they prevent wasting turns on the same dead end next time.
+### Save policy — when you finish a task
 
-**When to save a failure:**
-- You were stopped by the system (error loop, turn limit, cost limit)
-- The script ran but produced meaningless results (all zeros, empty)
-- You exhausted your retries and could not solve the problem
+After EVERY task, BEFORE responding to the user, decide:
 
-**How to save a FAILURE:**
+**Step 1 — Did the task actually succeed?**
+- Script exit_code 0 AND results non-empty / non-zero / not error messages.
+- If NO → go to "Failure flow" below.
 
-1. Write to `../prompts/learned/{slug}.md` with the `[FALLIDO]` prefix in the title
-2. Update `../prompts/learned/index.md` — mark it with ❌ so it's visually distinct
-3. THEN respond to the user explaining what went wrong
+**Step 2 — Did a recipe match your task?**
+- YES, and you followed it verbatim and it worked → **DO NOT SAVE ANYTHING.** The recipe is already correct. Saving a copy is exactly the bloat that ruins retrieval.
+- YES, but you had to deviate, add a step, or discover something not in it → go to "Meta-reflection" below.
+- NO recipe matched → SAVE a new recipe using the canonical format. Update `../prompts/learned/index.md`. THEN respond.
 
-Use this format:
+The most common case after this prompt rolls out will be **"YES, followed it, worked, save nothing"** — that is correct behavior, not a missed save.
 
-```
-# [FALLIDO] {Task title}
-Fecha: {YYYY-MM-DD}
-Tarea: "{original user prompt}"
+### Failure flow — UPDATE existing recipes, don't create new files
 
-## Qué se intentó
-- {Approach 1: what you tried and the specific error or wrong result}
-- {Approach 2: what you tried differently and why it also failed}
+When a task fails (you were stopped by errors, hit turn/cost limits, or produced meaningless results):
 
-## Por qué falló
-- {Root cause analysis — your best understanding of WHY nothing worked}
+**If a recipe matches your task (you read it before writing your script):**
+1. Use read_file on that recipe to get its current content.
+2. Append to its "Known failure modes" section: `❌ {specific condition you hit} → {what to try instead, or "no workaround found yet"}`. If the section doesn't exist (older recipe), add it right after "Tarea:" / before "Script".
+3. Use write_file to save the updated recipe. **Same slug, same path.** No `[FALLIDO]` suffix, no new file.
+4. Do NOT touch `index.md` — the existing entry stays.
+5. THEN respond to the user.
 
-## Recomendación
-- {What to try differently next time, or "requires manual validation in PowerFactory"}
-```
+**If NO recipe matches** (the failure is in a genuinely new task type with no related recipe):
+1. Create a new recipe at `../prompts/learned/{slug}.md` with the canonical format.
+2. Fill "Known failure modes" with what you observed. Omit "Script" if no working version exists.
+3. Update `index.md` with the new entry, marked `❌` in the description.
+4. THEN respond.
 
-**IMPORTANT:** When you see a `[FALLIDO]` experience in the index that matches your current task, read it BEFORE writing any script. It tells you what NOT to do. Either try a completely different approach or tell the user upfront that this task has a known issue.
+This is rare. Most failures will be *variations of a task that already has a recipe*. Use the existing recipe.
 
-The lessons must be **specific and actionable**. "Check file paths" is useless. "Use cache to avoid re-importing: read results/.project_cache.json first" is useful.
+### Meta-reflection — after responding
+
+After your final response to the user, run ONE check on yourself:
+
+> *"Did I do anything that wasn't already in the recipe(s) I read? A surprise, an extra step, an attribute I had to discover, an env quirk?"*
+
+- If NO → done. Touch nothing.
+- If YES → open the most relevant recipe with read_file, append ONE line under "Lecciones aprendidas" (for general lessons) or "Known failure modes" (for traps), save with write_file. Done.
+
+One delta per task, max. If multiple things were surprising, pick the most useful and skip the rest. The line must be specific and actionable: "Use `m:P:bus1` via GetAttribute, not direct attribute access — Boost.Python.ArgumentError otherwise" is useful. "Check file paths" is useless.
+
+### Anti-patterns — DO NOT
+
+- ❌ Creating a new recipe file because "this is a slight variation" of an existing one. Variations belong in the same recipe under "Preconditions" or as comments in the script.
+- ❌ Creating a `<task>-failure.md` or `[FALLIDO]` file. Failures go into the existing recipe's "Known failure modes" section.
+- ❌ Saving a recipe whose script you didn't run successfully.
+- ❌ Saving anything when the recipe was followed verbatim and worked. **Index bloat is worse than missing knowledge.**
+- ❌ Re-saving a recipe whose only change is "I succeeded again". The fact that it worked is already implicit in its existence.

@@ -151,7 +151,14 @@ def _run_task(task: _Task, prompt: str):
     # Create task-specific results directory
     task_results_dir = RESULTS_DIR / task.task_id
     task_results_dir.mkdir(parents=True, exist_ok=True)
-    results_rel = str(task_results_dir.relative_to(Path(config.get("SPARK_WORKSPACE", "./workspace"))))
+    workspace = Path(config.get("SPARK_WORKSPACE", "./workspace"))
+    results_rel = str(task_results_dir.relative_to(workspace))
+
+    # Resolve projects dir. Default sits next to the workspace at the repo root
+    # (workspace/../projects). Override via SPARK_PROJECTS_DIR for non-default
+    # layouts. Always passed as an absolute path so scripts don't need to know
+    # their cwd.
+    projects_dir = Path(config.get("SPARK_PROJECTS_DIR", str(workspace.parent / "projects"))).resolve()
 
     def log_cb(msg: str):
         task.logs.append({"ts": datetime.now(timezone.utc).isoformat(), "msg": msg})
@@ -161,7 +168,10 @@ def _run_task(task: _Task, prompt: str):
     try:
         session = Session(
             task.session_id or None,
-            extra_env={"SPARK_RESULTS_DIR": results_rel},
+            extra_env={
+                "SPARK_RESULTS_DIR": results_rel,
+                "SPARK_PROJECTS_DIR": str(projects_dir),
+            },
             cancel_event=task.cancel_event,
             pid_callback=pid_cb,
         )

@@ -41,7 +41,7 @@ def run():
     # --- Project Loading ---
     t0 = time.time()
     user = app.GetCurrentUser()
-    pfd_path = os.path.abspath(os.path.join("projects", "7-bus.pfd"))
+    pfd_path = os.path.join(os.environ["SPARK_PROJECTS_DIR"], "7-bus.pfd")
     pfd_filename = os.path.basename(pfd_path)
     
     cache_file = os.path.join(results_dir, ".project_cache.json")

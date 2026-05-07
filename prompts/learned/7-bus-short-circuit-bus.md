@@ -41,7 +41,7 @@ def run():
 
     # 3. Load Project (with cache)
     user = app.GetCurrentUser()
-    pfd_path = os.path.abspath(os.path.join("..", "projects", "7-bus.pfd"))
+    pfd_path = os.path.join(os.environ["SPARK_PROJECTS_DIR"], "7-bus.pfd")
     pfd_filename = os.path.basename(pfd_path)
     
     results_dir = os.environ.get("SPARK_RESULTS_DIR", "results")

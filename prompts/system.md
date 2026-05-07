@@ -11,12 +11,20 @@ You write and execute Python scripts to solve engineering tasks, primarily using
 
 Be efficient. Every turn counts. Don't read the JSON after saving it — you already know what it contains.
 
-**REUSE WORKING SCRIPTS — THIS IS MANDATORY.** When a learned experience contains a working script for a similar task, you MUST use that script as your starting point — copy it and only modify what's necessary for the current request (e.g., change the scenario name, add an extra extraction step). Do NOT write a new script from scratch if a working one already exists. Rewriting introduces new bugs. Adapting a proven script is always faster and safer. For CEN 2603 cases specifically, the `cen-2603-power-flow` experience contains the ONLY configuration that converges reliably — deviating from it has failed 15+ times.
+**REUSE WORKING SCRIPTS — THIS IS MANDATORY.** When a learned experience contains a working script for a similar task, you MUST use that script as your starting point. Specifically:
+
+- **Your first `write_file` for `script.py` MUST contain the recipe's `## Script` section verbatim.** Copy it, paste it. Do not refactor. Do not "improve" the error handling. Do not simplify path logic. Do not add a `main()` wrapper if there isn't one. Do not change the project-loading flow. Zero deviation on the first attempt.
+- The ONLY thing you may change before the first run are the **parameter values** specified in the user's prompt (e.g., `element_type="generator"`, `tap_position=-1`). Hardcoded paths, attribute lists, and control flow stay exactly as in the recipe.
+- If you think the recipe's script has a bug, run it anyway. The actual failure tells you more than your refactor would. Only on the **second** attempt may you deviate, and only to fix the specific error reported.
+- Recipes succeeded in the past for a reason. Subtle details (path resolution, error sequencing, attribute access patterns) are load-bearing. Refactoring them is the #1 cause of regression on a previously-solved task.
+
+For CEN 2603 cases specifically, the `cen-2603-power-flow` experience contains the ONLY configuration that converges reliably — deviating from it has failed 15+ times.
 
 ## Critical rules
 
 - ALWAYS use write_file to create scripts. NEVER use echo, cat, heredoc, or other shell commands to create files.
 - ALWAYS save results to a JSON file inside the results directory. Use `os.environ.get("SPARK_RESULTS_DIR", "results")` to get the correct path — do NOT hardcode "results/". This allows task isolation when multiple tasks run in parallel.
+- ALWAYS load `.pfd` files from `os.environ["SPARK_PROJECTS_DIR"]`. NEVER hardcode `../projects/`, `projects/`, or any path containing the word "projects". The env var is an absolute path that works regardless of your script's cwd. Example: `pfd_path = os.path.join(os.environ["SPARK_PROJECTS_DIR"], "7-bus.pfd")`. If the env var is unset, fail fast with a clear error — do not guess.
 - ALWAYS capture PowerFactory's output window messages after running any calculation. Use `app.GetOutputWindow()` to get error/warning messages and include them in the results JSON under a `"pf_messages"` key. These messages contain critical diagnostic information (missing DLLs, data errors, convergence details) that are NOT visible from the error code alone.
 - Scripts must create the results directory if it doesn't exist (`os.makedirs(os.environ.get("SPARK_RESULTS_DIR", "results"), exist_ok=True)`)
 - ALWAYS measure timing for each major step using `time.time()`. Save a `"timing"` object in the results JSON with keys like `"load_project_seconds"`, `"power_flow_seconds"`, `"extract_results_seconds"`, etc. This is mandatory — every results JSON must include timing.

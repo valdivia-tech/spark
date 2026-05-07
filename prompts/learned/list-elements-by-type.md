@@ -7,7 +7,7 @@ Tarea: "Write a PowerFactory Python script that lists all elements of a given ty
 - **Conexiones de bus**: Para líneas y transformadores, el bus se obtiene a través de `cubicle.cterm.loc_name`.
 - **Atributos específicos**: Cada tipo de elemento tiene sus propios parámetros clave (`dline` para longitud, `sgn` para potencia nominal, etc.).
 - **Serialización JSON**: Los objetos de PowerFactory (como `OutputWindow`) no son serializables directamente. Convertir valores numéricos a `float` y capturar mensajes como strings.
-- **Ruta de proyecto**: En el entorno Spark, los proyectos están en `../projects/`.
+- **Ruta de proyecto**: USA `os.environ["SPARK_PROJECTS_DIR"]` — es absoluto y task-isolated. NUNCA hardcodees `../projects/` ni `projects/`.
 
 ## Script
 ```python
@@ -62,8 +62,9 @@ def main():
     t_init = time.time()
 
     user = app.GetCurrentUser()
-    # Correct path for 7-bus.pfd relative to workspace
-    pfd_path = os.path.abspath(os.path.join("..", "projects", "7-bus.pfd"))
+    # Project path: always via SPARK_PROJECTS_DIR env var (absolute, task-isolated).
+    projects_dir = os.environ["SPARK_PROJECTS_DIR"]
+    pfd_path = os.path.join(projects_dir, "7-bus.pfd")
     pfd_filename = os.path.basename(pfd_path)
 
     cache_file = os.path.join(results_dir, ".project_cache.json")

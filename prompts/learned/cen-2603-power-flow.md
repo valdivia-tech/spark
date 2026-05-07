@@ -44,7 +44,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # --- Load project (cache) ---
 user = app.GetCurrentUser()
-pfd_path = os.path.abspath(os.path.join("..", "projects", "2603-BD-OP-COORD-DMAP.pfd"))
+pfd_path = os.path.join(os.environ["SPARK_PROJECTS_DIR"], "2603-BD-OP-COORD-DMAP.pfd")
 pfd_filename = os.path.basename(pfd_path)
 cache_file = os.path.join(RESULTS_DIR, ".project_cache.json")
 cache = {}

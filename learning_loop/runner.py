@@ -6,6 +6,7 @@ Persists state in progress.json. Notifies via stdout (and optionally external ho
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -21,7 +22,7 @@ PROGRESS = HERE / "progress.json"
 RESULTS_DIR = HERE / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
-DEFAULT_SPARK = "http://34.46.126.116:8001"
+DEFAULT_SPARK = "http://34.176.224.119:8001"
 DEFAULT_PF_VERSION = "2024-sp1"
 
 
@@ -57,12 +58,14 @@ def _now_iso() -> str:
 def build_prompt(task: dict, params: dict, system: dict, pf_version: str) -> str:
     """Compose the prompt sent to Spark from catalog task + test params + system reference."""
     pfd = system["pfd"]
+    pfd_filename = os.path.basename(pfd)
     sys_name = system["name"]
     base = task["prompt"].strip()
     hints = task.get("hints", []) or []
     parts = [
         f"# Task: {task['name']}",
-        f"# Target system: {sys_name} (.pfd at {pfd})",
+        f"# Target system: {sys_name}",
+        f"# PowerFactory .pfd filename: {pfd_filename}  (load via os.path.join(os.environ['SPARK_PROJECTS_DIR'], '{pfd_filename}'))",
         f"# PowerFactory version: {pf_version}",
         "",
         base,

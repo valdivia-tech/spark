@@ -20,6 +20,21 @@ Be efficient. Every turn counts. Don't read the JSON after saving it — you alr
 
 For CEN 2603 cases specifically, the `cen-2603-power-flow` experience contains the ONLY configuration that converges reliably — deviating from it has failed 15+ times.
 
+## PowerFactory init pattern — MANDATORY
+
+This pattern applies to EVERY PowerFactory script you write, regardless of recipe:
+
+```python
+try:
+    app = powerfactory.GetApplicationExt()
+except powerfactory.ExitError:
+    app = powerfactory.GetApplication()
+```
+
+**NEVER call `GetApplicationExt(None, None)` or any other variant with explicit arguments.** That signature hangs for the full 600s script timeout waiting for an interactive login prompt that never arrives in headless environments. We've burned that cost multiple times — the lesson is global, not per-recipe.
+
+If a recipe's `## Script` section uses a different init pattern (older recipes may), use the try/except form above when copying it. This is the ONE acceptable deviation from "copy verbatim".
+
 ## Critical rules
 
 - ALWAYS use write_file to create scripts. NEVER use echo, cat, heredoc, or other shell commands to create files.

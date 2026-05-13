@@ -373,6 +373,95 @@ print("DELETED:", deleted)
 '''
 
 
+# --- Projects (pre-stage .pfd from GCS into SPARK_PROJECTS_DIR) ---
+
+
+class PullGcsRequest(BaseModel):
+    gcs_uri: str  # gs://<bucket>/<object>
+    name: str | None = None  # opcional: nombre local de destino (sin path, debe terminar en .pfd)
+
+
+class PullGcsResponse(BaseModel):
+    filename: str
+    local_path: str
+    size_bytes: int
+    pulled_at: str
+    skipped_existing: bool
+
+
+def _parse_gcs_uri(uri: str) -> tuple[str, str]:
+    if not uri.startswith("gs://"):
+        raise HTTPException(400, "URI must start with gs://")
+    rest = uri[5:]
+    if "/" not in rest:
+        raise HTTPException(400, "URI must be gs://<bucket>/<object>")
+    bucket, blob = rest.split("/", 1)
+    if not bucket or not blob:
+        raise HTTPException(400, "URI must be gs://<bucket>/<object>")
+    return bucket, blob
+
+
+def _resolve_projects_dir() -> Path:
+    """Resuelve SPARK_PROJECTS_DIR igual que _run_task — workspace/../projects por default."""
+    workspace = Path(config.get("SPARK_WORKSPACE", "./workspace"))
+    return Path(config.get("SPARK_PROJECTS_DIR", str(workspace.parent / "projects"))).resolve()
+
+
+@app.post("/projects/pull-gcs")
+def pull_project_from_gcs(req: PullGcsRequest) -> PullGcsResponse:
+    """Descarga un .pfd desde GCS a SPARK_PROJECTS_DIR.
+
+    Pensado para que un orquestador (ej. Don Nelson) pre-stagee la base
+    PowerFactory antes de mandar un POST /tasks que la consuma. La descarga
+    es idempotente: si el archivo ya existe localmente con el mismo tamaño
+    que el blob remoto, se reusa.
+    """
+    # Lazy import: google-cloud-storage es dep opcional del extra `server`.
+    try:
+        from google.cloud import storage as _gcs_storage
+    except ImportError:
+        raise HTTPException(
+            500,
+            "google-cloud-storage no está instalado. Instalá con `pip install -e .[server]` o `uv sync`.",
+        )
+
+    bucket_name, blob_path = _parse_gcs_uri(req.gcs_uri)
+
+    filename = req.name if req.name else Path(blob_path).name
+    if not filename.lower().endswith(".pfd"):
+        raise HTTPException(400, "El nombre local debe terminar en .pfd")
+    if "/" in filename or "\\" in filename or filename in (".", ".."):
+        raise HTTPException(400, "Nombre local inválido (sin paths)")
+
+    projects_dir = _resolve_projects_dir()
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    target = (projects_dir / filename).resolve()
+    if not target.is_relative_to(projects_dir):
+        raise HTTPException(400, "Path traversal detectado")
+
+    client = _gcs_storage.Client()
+    blob = client.bucket(bucket_name).blob(blob_path)
+    if not blob.exists():
+        raise HTTPException(404, f"Object not found: {req.gcs_uri}")
+    blob.reload()
+    remote_size = blob.size or 0
+
+    skipped = target.exists() and target.stat().st_size == remote_size
+    if not skipped:
+        blob.download_to_filename(str(target))
+
+    return PullGcsResponse(
+        filename=filename,
+        local_path=str(target),
+        size_bytes=target.stat().st_size,
+        pulled_at=datetime.now(timezone.utc).isoformat(),
+        skipped_existing=skipped,
+    )
+
+
+# --- Admin ---
+
+
 @app.post("/admin/reset-projects")
 def reset_projects() -> dict:
     """Delete all IntPrj objects from the PF user's database. Returns deleted list.

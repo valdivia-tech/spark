@@ -1,6 +1,6 @@
 [project]
 name = "spark"
-version = "0.7.1"
+version = "0.8.0"
 description = "Agente de código eléctrico para DIgSILENT PowerFactory"
 requires-python = ">=3.11"
 license = "MIT"
@@ -23,6 +23,7 @@ spark-server = "server:main"
 server = [
     "fastapi>=0.115.7",
     "uvicorn>=0.34.1",
+    "google-cloud-storage>=2.18.0",
 ]
 
 [build-system]

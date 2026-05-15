@@ -29,6 +29,14 @@ class TaskRequest(BaseModel):
     session_id: str | None = None
 
 
+class ResultArtifact(BaseModel):
+    """Un archivo de resultado persistido en GCS al completar un task."""
+
+    name: str  # stem, sin extensión
+    gcs_uri: str  # gs://bucket/spark-results/{task_id}/{name}.json
+    size_bytes: int
+
+
 class TaskResponse(BaseModel):
     task_id: str
     status: Literal["running", "completed", "failed", "cancelled"]
@@ -37,6 +45,7 @@ class TaskResponse(BaseModel):
     error: str | None = None
     stats: dict | None = None
     result_files: list[str] = []
+    result_artifacts: list[ResultArtifact] = []
     created: str
 
 
@@ -52,6 +61,10 @@ class _Task:
     error: str | None = None
     stats: dict | None = None
     result_files: list[str] = field(default_factory=list)
+    # Llenado al completar el task si SPARK_RESULTS_BUCKET está configurado.
+    # Es la fuente de verdad para auditoría a largo plazo (sobrevive reciclaje
+    # de la VM). `result_files` queda para compat — mismos nombres.
+    result_artifacts: list[dict] = field(default_factory=list)
     logs: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     # Cancellation plumbing — not serialised in TaskResponse (extras are ignored).
@@ -148,6 +161,59 @@ def _safe_child(base: Path, name: str, suffix: str = "") -> Path:
     return path
 
 
+def _upload_task_results_to_gcs(task_id: str, task_results_dir: Path) -> list[dict]:
+    """Sube cada .json del directorio a gs://{bucket}/spark-results/{task_id}/.
+
+    Devuelve la lista de artifacts (name, gcs_uri, size_bytes). Si el bucket
+    no está configurado o la dep falla, devuelve [] sin romper el task —
+    el resultado en disco sigue disponible vía /results/{task_id}/{name}.
+
+    Auth: usa Application Default Credentials. En la VM funciona con
+    `gcloud auth application-default login` (no requiere SA JSON).
+    """
+    bucket_name = config.get("SPARK_RESULTS_BUCKET", "")
+    if not bucket_name:
+        return []
+    try:
+        from google.cloud import storage as _gcs_storage
+    except ImportError:
+        print("[gcs] google-cloud-storage no instalado, skip upload")
+        return []
+
+    if not task_results_dir.exists():
+        return []
+
+    prefix = config.get("SPARK_RESULTS_GCS_PREFIX", "spark-results").strip("/")
+
+    artifacts: list[dict] = []
+    try:
+        client = _gcs_storage.Client()
+        bucket = client.bucket(bucket_name)
+    except Exception as e:
+        print(f"[gcs] No pude inicializar cliente GCS ({bucket_name}): {e}")
+        return []
+
+    for f in sorted(task_results_dir.glob("*.json")):
+        if f.name.startswith("_"):
+            continue
+        object_path = f"{prefix}/{task_id}/{f.name}"
+        try:
+            blob = bucket.blob(object_path)
+            blob.upload_from_filename(str(f), content_type="application/json")
+            artifacts.append(
+                {
+                    "name": f.stem,
+                    "gcs_uri": f"gs://{bucket_name}/{object_path}",
+                    "size_bytes": f.stat().st_size,
+                }
+            )
+        except Exception as e:
+            # Un archivo que falla no debe abortar el resto: log y seguir.
+            print(f"[gcs] Falló subir {object_path}: {e}")
+
+    return artifacts
+
+
 def _run_task(task: _Task, prompt: str):
     # Create task-specific results directory
     task_results_dir = RESULTS_DIR / task.task_id
@@ -198,6 +264,14 @@ def _run_task(task: _Task, prompt: str):
                 f.stem for f in sorted(task_results_dir.glob("*.json"))
                 if not f.name.startswith("_")
             ]
+        # Sincroniza los resultados a GCS (si está configurado) para que
+        # sobrevivan al reciclaje de esta VM. No falla el task si GCS falla.
+        try:
+            task.result_artifacts = _upload_task_results_to_gcs(
+                task.task_id, task_results_dir
+            )
+        except Exception as e:
+            print(f"[gcs] upload defensivo falló para {task.task_id}: {e}")
     except Exception as e:
         task.error = str(e)
         task.status = "failed"

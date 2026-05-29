@@ -424,6 +424,29 @@ class Session:
             if getattr(self, '_log_cb', None) and msg:
                 self._log_cb(f"    {msg}")
 
+    def _action_label(self, name, args):
+        """Short human label of what the agent is about to do (for live progress)."""
+        if name == "write_file":
+            return f"Escribiendo {Path(args.get('path', '?')).name}"
+        if name == "read_file":
+            return f"Leyendo {Path(args.get('path', '?')).name}"
+        if name == "execute_bash":
+            cmd = args.get("command", "")
+            script = next((t for t in cmd.split() if t.endswith(".py")), None)
+            return f"Ejecutando {script or 'comando'}"
+        return name
+
+    def _emit_progress(self, turn, run_in, run_out, action):
+        """Report live progress (current turn, accumulated cost, action) to the
+        optional progress callback. Best-effort: never let it break the run."""
+        cb = getattr(self, "_progress_cb", None)
+        if not cb:
+            return
+        try:
+            cb(turn, _calculate_cost(self.model, run_in, run_out), action)
+        except Exception:
+            pass
+
     def _dispatch_and_track(self, name, args, execs):
         """Dispatch a tool call and track execute_bash timing."""
         t0 = time.time() if name == "execute_bash" else None
@@ -485,9 +508,16 @@ class Session:
         }
         self._session_file(self.session_id).write_text(json.dumps(data, indent=2, default=str))
 
-    def run(self, prompt: str, verbose: bool = True, log_callback=None) -> str:
-        """Send a prompt to the agent. Chat history persists between calls."""
+    def run(self, prompt: str, verbose: bool = True, log_callback=None,
+            progress_callback=None) -> str:
+        """Send a prompt to the agent. Chat history persists between calls.
+
+        progress_callback(turn:int, cost_usd:float, action:str) is called before
+        each tool dispatch so a caller (e.g. the HTTP server) can surface live
+        progress while the run is still in flight.
+        """
         self._log_cb = log_callback
+        self._progress_cb = progress_callback
         if verbose:
             print(f"\n{'='*60}")
             print(f"Spark [{self.session_id}] — {prompt[:70]}{'...' if len(prompt) > 70 else ''}")
@@ -547,6 +577,8 @@ class Session:
                 args = dict(fc.args) if fc.args else {}
                 if verbose:
                     self._log_before(fc.name, args)
+                self._emit_progress(turns + 1, run_in, run_out,
+                                    self._action_label(fc.name, args))
                 result = self._dispatch_and_track(fc.name, args, run_execs)
                 if verbose:
                     self._log_after(fc.name, result)

@@ -47,6 +47,12 @@ class TaskResponse(BaseModel):
     result_files: list[str] = []
     result_artifacts: list[ResultArtifact] = []
     created: str
+    # Progreso en vivo — actualizado mientras la tarea corre para que el caller
+    # (Don Nelson / su frontend) muestre en qué está sin esperar a `stats`.
+    current_turn: int = 0
+    max_turns: int = 0
+    cost_so_far: float = 0.0
+    last_action: str | None = None
 
 
 # --- Task store ---
@@ -67,6 +73,11 @@ class _Task:
     result_artifacts: list[dict] = field(default_factory=list)
     logs: list = field(default_factory=list)
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Live progress — updated by the agent's progress_callback while running.
+    current_turn: int = 0
+    max_turns: int = 0
+    cost_so_far: float = 0.0
+    last_action: str | None = None
     # Cancellation plumbing — not serialised in TaskResponse (extras are ignored).
     cancel_event: threading.Event = field(default_factory=threading.Event)
     current_pid: int | None = None
@@ -232,6 +243,11 @@ def _run_task(task: _Task, prompt: str):
 
     def pid_cb(pid):
         task.current_pid = pid
+
+    def progress_cb(turn: int, cost: float, action: str):
+        task.current_turn = turn
+        task.cost_so_far = round(cost, 6)
+        task.last_action = action
     try:
         session = Session(
             task.session_id or None,
@@ -243,7 +259,10 @@ def _run_task(task: _Task, prompt: str):
             pid_callback=pid_cb,
         )
         task.session_id = session.session_id
-        result = session.run(prompt, verbose=True, log_callback=log_cb)
+        task.max_turns = session.max_turns
+        result = session.run(
+            prompt, verbose=True, log_callback=log_cb, progress_callback=progress_cb
+        )
         task.result = result
         # If the cancel flag was set during the run, surface that as the final status.
         if task.cancel_event.is_set():

@@ -661,7 +661,12 @@ class Session:
         if turns >= self.max_turns and stopped_reason is None:
             stopped_reason = "max_turns"
 
-        if stopped_reason in ("cost_limit", "max_turns", "wall_timeout", "cancelled"):
+        # NOTE: a user-initiated cancel ("cancelled") is intentionally excluded.
+        # The user stopping a task is not a real failure of the approach, so we
+        # don't pollute the learned corpus with a [FALLIDO] experience for it.
+        # Resource-limit stops (cost/turns/wall) DO save, since those are genuine
+        # failure modes worth learning from.
+        if stopped_reason in ("cost_limit", "max_turns", "wall_timeout"):
             if verbose:
                 print(f"\n  [SAVING FAILURE] Giving model a chance to save what it learned...")
             try:

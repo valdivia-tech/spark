@@ -721,6 +721,38 @@ def get_learned(slug: str) -> PlainTextResponse:
     return PlainTextResponse(path.read_text(encoding="utf-8"))
 
 
+@app.delete("/learned/{slug}")
+def delete_learned(slug: str) -> dict:
+    """Prune a learned experience: delete its .md file and drop its row from
+    index.md. Used to remove bad/misleading learnings (e.g. a [FALLIDO] saved
+    from a user-cancelled task that wasn't a real failure). Path traversal is
+    blocked by _safe_child.
+    """
+    path = _safe_child(LEARNED_DIR, slug, ".md")
+    removed_file = False
+    if path.exists():
+        path.unlink()
+        removed_file = True
+
+    # Drop the matching row from index.md (same table format list_learned reads).
+    index = LEARNED_DIR / "index.md"
+    removed_index = False
+    if index.exists():
+        kept = []
+        for line in index.read_text(encoding="utf-8").splitlines():
+            if line.startswith("|") and "`" in line:
+                cols = [c.strip() for c in line.split("|")[1:-1]]
+                if cols and cols[0].strip("`").removesuffix(".md") == slug:
+                    removed_index = True
+                    continue
+            kept.append(line)
+        index.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+    if not removed_file and not removed_index:
+        raise HTTPException(404, "Experience not found")
+    return {"deleted": slug, "file_removed": removed_file, "index_removed": removed_index}
+
+
 # --- Entry point ---
 
 
